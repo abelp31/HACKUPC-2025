@@ -173,7 +173,7 @@ Now, for each city destination, return the following:
 - destinationName: The name of the destination (city name). Add the emoji flag of the country at the start of the name if available.
 - goodReasons: A short list of 5 elements about why this destination is a good fit for the group. Make sure to include the most relevant features based on the aggregated answers.
 - badReasons: A short list of 5 elements about why this destination might not be the best choice (e.g: anti lgbt laws, robbery, political situation, recent conflicts, difficult visa requirements, etc). Take into account, if needed, the answers of the different questions.
-- features: A list of features that make this destination appealing (e.g: beach, mountains, historical sites, local cuisine, shopping, etc). Include an emoji in  the start of each feature. Make sure to be distinctive and not repeat the same features for different destinations.
+- features: A list of features that make this destination appealing (e.g: beach, mountains, historical sites, local cuisine, shopping, etc). Include an emoji in  the start of each feature. Highlight the unique or defining features of each destination compared to the others on the list.
 - countryIsoCode: The ISO code of the country where the destination is located (e.g., "FR" for France)
 - bestSeason: The best season to visit this destination (e.g., "Summer", "Winter", "Spring", "Autumn"). This is a single word.
         `,
