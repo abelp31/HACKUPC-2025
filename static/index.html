@@ -37,6 +37,10 @@
             <input type="text" id="playerName" value="TestPlayer">
         </div>
         <div>
+            <label for="originCountry">Origin country:</label>
+            <input type="text" id="originCountry" value="ES">
+        </div>
+        <div>
             <label for="gameIdInput">Game ID (Leave blank to create):</label>
             <input type="text" id="gameIdInput" value="TESTGM">
         </div>
@@ -88,12 +92,14 @@
         let socket = null;
         let currentGameId = null;
         let currentPlayerName = null;
+        let currentOriginCountry = null; // Store the origin country
         let currentQuestion = null; // Store the current question object
 
         // DOM Elements
         const joinArea = document.getElementById('joinArea');
         const gameArea = document.getElementById('gameArea');
         const playerNameInput = document.getElementById('playerName');
+        const originCountryInput = document.getElementById('originCountry');
         const gameIdInput = document.getElementById('gameIdInput');
         const createGameBtn = document.getElementById('createGameBtn');
         const joinGameBtn = document.getElementById('joinGameBtn');
@@ -251,7 +257,7 @@
                 logMessage(`Connected to server with ID: ${socket.id}`);
                 if (currentGameId && currentPlayerName) {
                      logMessage(`Attempting to join game ${currentGameId} as ${currentPlayerName}...`);
-                     socket.emit('joinGame', { gameId: currentGameId, playerName: currentPlayerName });
+                     socket.emit('joinGame', { gameId: currentGameId, playerName: currentPlayerName, originCountry: currentOriginCountry });
                 } else {
                     logMessage("Ready to join or create a game.");
                 }
@@ -365,8 +371,9 @@
 
         joinGameBtn.addEventListener('click', () => {
             currentPlayerName = playerNameInput.value.trim();
+            currentOriginCountry = originCountryInput.value.trim(); // Get the origin country
             currentGameId = gameIdInput.value.trim();
-            if (!currentPlayerName || !currentGameId) {
+            if (!currentPlayerName || !currentGameId || !currentOriginCountry) {
                 alert('Please enter your name and a Game ID.');
                 return;
             }

@@ -135,8 +135,8 @@ io.on('connection', (socket: CustomSocket) => {
     console.log(`Client connected: ${socket.id}. Waiting for join details...`);
 
     // Event Listener for Joining a Game
-    socket.on('joinGame', ({ gameId, playerName }: { gameId: string, playerName: string }) => {
-        console.log(`[joinGame] Attempt by ${socket.id}: GameID=${gameId}, PlayerName=${playerName}`);
+    socket.on('joinGame', ({ gameId, playerName, originCountry }: { gameId: string, playerName: string, originCountry: string }) => {
+        console.log(`[joinGame] Attempt by ${socket.id}: GameID=${gameId}, PlayerName=${playerName}, OriginCountry=${originCountry}`);
         // Validation...
         if (!gameId || !playerName) { socket.emit('error', 'Game ID and Player Name are required.'); return; }
         const game = games.get(gameId);
@@ -145,10 +145,10 @@ io.on('connection', (socket: CustomSocket) => {
         if (socket.gameId) { socket.emit('error', 'You are already in a game.'); return; }
 
         // Successful Join...
-        console.log(`[joinGame] Success: ${socket.id} | Player: ${playerName} | Game: ${gameId}`);
+        console.log(`[joinGame] Success: ${socket.id} | Player: ${playerName} | Game: ${gameId} | OriginCountry: ${originCountry}`);
         socket.gameId = gameId;
         socket.playerName = playerName;
-        game.players[socket.id] = { name: playerName, answers: [] };
+        game.players[socket.id] = { name: playerName, originCountry, answers: [] };
         socket.join(gameId);
         socket.emit('joinSuccess', { gameId: game.id, players: game.players, state: game.state });
         socket.to(gameId).emit('playerJoined', { playerId: socket.id, playerName: playerName, players: game.players });

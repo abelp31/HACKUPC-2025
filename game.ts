@@ -65,6 +65,8 @@ export async function processGameResults(game: Game) {
             });
         }
 
+        console.log(`Players: ${JSON.stringify(game.players)}`);
+
         // 2. Format Aggregated Data for Prompt
         let formattedAnswers = "";
         for (const qId in aggregatedResults) {
