@@ -1,7 +1,6 @@
 // express router for handling geo lookup requests
 import express, { Request, Response } from "express";
 import { searchCountryByName } from "./internal_data";
-import { filterWithConstraints } from "./skyscanner";
 
 // create /geo/country/:ip endpoint
 const router = express.Router();

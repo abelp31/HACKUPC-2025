@@ -1,7 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { io } from "./main";
 import { Game } from "./types";
-import { filterWithConstraints } from "./skyscanner";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 if (!GEMINI_API_KEY) {
@@ -133,10 +132,9 @@ For each destination, return the following:
             console.log(`-------------------------------------------------`);
 
 
-            const finalDestinationsThatMatchCriteria = await filterWithConstraints(Object.values(game.players), suggestions.map(dest => dest.isoCountry), game.month);
+            // const finalDestinationsThatMatchCriteria = await filterWithConstraints(Object.values(game.players), suggestions.map(dest => dest.isoCountry), game.month);
+            const finalDestinationsThatMatchCriteria = suggestions.map(dest => dest.isoCountry);
             console.log(`Final destinations that match criteria: ${finalDestinationsThatMatchCriteria}`);
-
-            // TODO: cridar genai per final destinations that match criteria, obtenir full dades
 
             const data = await generateFinalData(sharedPrompt, finalDestinationsThatMatchCriteria);
 
@@ -198,7 +196,5 @@ For each destination, return the following:
             },
         }
     });
-    const parsed = JSON.parse(result.text!);
-    console.log(JSON.stringify(parsed, null, 2));
-    return parsed;
+    return JSON.parse(result.text!) as { destinationName: string, reasoning: string, features: string[], countryIsoCode: string }[];
 }

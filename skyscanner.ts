@@ -60,49 +60,49 @@ interface IndicativeSearchParam {
 }
 
 
-export const filterWithConstraints = async (players: Player[], destinationsIsoCountry: string[], month: number) => {
-    let finalDestinations = destinationsIsoCountry.slice();
+// export const filterWithConstraints = async (players: Player[], destinationsIsoCountry: string[], month: number) => {
+//     let finalDestinations = destinationsIsoCountry.slice();
 
-    // TODO: fer servir promise.all()
-    for (const player of players) {
-        for (const destinationIsoCode of destinationsIsoCountry) {
-            const destinationData = searchCountryByISO(destinationIsoCode);
-            if (!destinationData) {
-                console.error(`Destination ${destinationIsoCode} not found`);
-                continue;
-            }
+//     // TODO: fer servir promise.all()
+//     for (const player of players) {
+//         for (const destinationIsoCode of destinationsIsoCountry) {
+//             const destinationData = searchCountryByISO(destinationIsoCode);
+//             if (!destinationData) {
+//                 console.error(`Destination ${destinationIsoCode} not found`);
+//                 continue;
+//             }
 
-            // 
-            const legs: IndicativeSearchParam[] = [
-                {
-                    originIsoCode: player.originCountry,
-                    destinationIsoCode: destinationData.isoCode
-                },
-                {
-                    originIsoCode: destinationData.isoCode,
-                    destinationIsoCode: player.originCountry
-                }
-            ];
+//             // 
+//             const legs: IndicativeSearchParam[] = [
+//                 {
+//                     originIsoCode: player.originCountry,
+//                     destinationIsoCode: destinationData.isoCode
+//                 },
+//                 {
+//                     originIsoCode: destinationData.isoCode,
+//                     destinationIsoCode: player.originCountry
+//                 }
+//             ];
 
-            const data = await getIndicativeSearch(legs, month);
+//             const data = await getIndicativeSearch(legs, month);
 
-            // if any if data.content.results.quotes has a minPrice.amount > player.maxBudget, then remove the destination from the finalDestinations array
-            if (data) {
-                // TODO: cal comprovar el leg d'anada i de tornada, sumar-ho i que sigui <= player.maxBudget
-                const filteredResults = Object.entries(data.content.results.quotes).filter(([key, value]) => {
-                    const minPrice = parseFloat((value as any).minPrice.amount);
-                    return minPrice <= player.maxBudget;
-                });
-                if (filteredResults.length === 0) {
-                    finalDestinations = finalDestinations.filter(destination => destination !== destinationIsoCode);
-                }
-            }
+//             // if any if data.content.results.quotes has a minPrice.amount > player.maxBudget, then remove the destination from the finalDestinations array
+//             if (data) {
+//                 // TODO: cal comprovar el leg d'anada i de tornada, sumar-ho i que sigui <= player.maxBudget
+//                 const filteredResults = Object.entries(data.content.results.quotes).filter(([key, value]) => {
+//                     const minPrice = parseFloat((value as any).minPrice.amount);
+//                     return minPrice <= player.maxBudget;
+//                 });
+//                 if (filteredResults.length === 0) {
+//                     finalDestinations = finalDestinations.filter(destination => destination !== destinationIsoCode);
+//                 }
+//             }
 
-        }
-    }
+//         }
+//     }
 
-    return finalDestinations;
-};
+//     return finalDestinations;
+// };
 
 export const getIndicativeSearch = async (legs: IndicativeSearchParam[], month: number) => {
     const finalLegs = legs.map(leg => {
