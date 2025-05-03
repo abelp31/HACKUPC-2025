@@ -1,7 +1,7 @@
 const API_KEY = "sh967490139224896692439644109194";
 
 
-export const getNearestAirportEntityId = async (lat: number, lng: number): Promise<string> => {
+export const getNearestAirportIata = async (lat: number, lng: number): Promise<string> => {
     const response = await fetch(`https://partners.api.skyscanner.net/apiservices/v3/geo/hierarchy/flights/nearest`, {
         method: 'POST',
         headers: {
@@ -46,7 +46,7 @@ export const getNearestAirportEntityId = async (lat: number, lng: number): Promi
 
     const mostNear = nearestAirports[0];
     console.log(`Using nearest airport: ${mostNear.name} (${mostNear.iata}) at (lat,lng)=(${mostNear.coordinates.latitude},${mostNear.coordinates.longitude})`);
-    return mostNear.entityId;
+    return mostNear.iata;
 }
 
 

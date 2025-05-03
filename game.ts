@@ -1,7 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { getUnsplashImages, getWikipediaImage } from "./unsplash";
 import { socketServer } from "./main";
-import { Game } from "./types";
+import { Game, Player } from "./types";
+const { obtenerVuelos } = require("./flights.js");
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 if (!GEMINI_API_KEY) {
@@ -114,14 +115,15 @@ For each destination, return the following:
                     },
                 }
             });
-            const suggestions = JSON.parse(result.text!) as { cityName: string, iataCode: string }[];
+            const firstRoundSuggestions = JSON.parse(result.text!) as { cityName: string, iataCode: string }[];
 
             console.log(`--- Gemini Response Raw Text for Game ${game.id} ---`);
-            console.log(suggestions);
+            console.log(firstRoundSuggestions);
             console.log(`-------------------------------------------------`);
-            /* TODO: iataOrigen, iataDesti, preuMaxim, dataInici, dataFinal */
 
-            recommendations = await generateFinalData(sharedPrompt, suggestions);
+            const destinationsThatMatchPlayerCriterias = await filterMatchedCriterias(game, firstRoundSuggestions);
+
+            recommendations = await generateFinalData(sharedPrompt, destinationsThatMatchPlayerCriterias);
             console.log("FINAL DATA: ", recommendations);
 
         } catch (apiError) {
@@ -176,6 +178,28 @@ const fillImages = async (destinations: DestinationData[]): Promise<DestinationD
 
     return await Promise.all(promises);
 };
+
+const filterMatchedCriterias = async (game: Game, suggestions: { cityName: string, iataCode: string }[]) => {
+    let finalDestinations = suggestions.slice();
+
+    // For all players, check if they can go to the destination within their budget. If not, remove the destination from the list.
+    for (const player of Object.values(game.players)) {
+        const playerBudget = player.maxBudget;
+        const playerOriginIata = player.originIata;
+
+        for (const suggestion of suggestions) {
+            const destinationIata = suggestion.iataCode;
+            const flightInfo = await obtenerVuelos(playerOriginIata, destinationIata, game.startDate, game.endDate);
+            if (!flightInfo || flightInfo.length === 0 || flightInfo[0].precio > playerBudget) {
+                finalDestinations = finalDestinations.filter(dest => dest.iataCode !== destinationIata);
+                console.log(`Removing destination ${destinationIata} for player ${player.name} due to budget constraints.`);
+                continue;
+            }
+        }
+    }
+
+    return finalDestinations
+}
 
 interface DestinationData {
     destinationName: string,

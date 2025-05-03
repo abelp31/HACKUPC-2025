@@ -9,7 +9,7 @@ import cors from 'cors';
 import path from 'path';
 import lookupRouter from './api';
 import { processGameResults } from './game';
-import { getNearestAirportEntityId } from './skyscanner';
+import { getNearestAirportIata } from './skyscanner';
 
 interface CustomSocket extends Socket {
     gameId?: string;
@@ -142,13 +142,13 @@ socketServer.on('connection', (clientSocket: CustomSocket) => {
 
 
         // Extract nearest airport ID from coordinates
-        const entityIdOrigin = await getNearestAirportEntityId(coords.lat, coords.lng)
+        const originIata = await getNearestAirportIata(coords.lat, coords.lng)
 
         // Successful Join...
-        console.log(`[joinGame] Success: ${clientSocket.id} | Player: ${playerName} | Game: ${gameId} | entityIdOrigin: ${entityIdOrigin}`);
+        console.log(`[joinGame] Success: ${clientSocket.id} | Player: ${playerName} | Game: ${gameId} | originIata: ${originIata} | maxBudget: ${maxBudget}`);
         clientSocket.gameId = gameId;
         clientSocket.playerName = playerName;
-        game.players[clientSocket.id] = { name: playerName, entityIdOrigin, answers: [], maxBudget };
+        game.players[clientSocket.id] = { name: playerName, originIata, answers: [], maxBudget };
         clientSocket.join(gameId);
         clientSocket.emit('joinSuccess', { gameId: game.id, players: game.players, state: game.state });
         clientSocket.to(gameId).emit('playerJoined', { playerId: clientSocket.id, playerName: playerName, players: game.players });
