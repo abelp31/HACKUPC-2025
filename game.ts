@@ -88,15 +88,10 @@ export async function processGameResults(game: Game) {
 We asked ${playerCount} friends the following questions to choose a travel destination, and these were the aggregated results of their choices:
 ${formattedAnswers}
 
-You can only return countries within Europe and in the following list:
-${LIMITED_COUNTRIES.join(", ")}
 
-And cities within the following list:
-${LIMITED_CITIES.join(", ")}
-
-Based *only* on these preferences, suggest a list of 5 specific travel destinations (city or specific region/park).
+Based *only* on these preferences, suggest a list of 15 travel destinations (countries only!!!).
 For each destination, return the following:
-- destinationName: The name of the destination (city or region)
+- destinationName: The name of the destination (country)
 - reasoning: A short explanation of why this destination is a good fit for the group
 - features: A list of features that make this destination appealing (e.g., "beach", "mountains", "historical sites"). Include an emoji in  the start of each feature.
 - countryIsoCode: The ISO code of the country where the destination is located (e.g., "FR" for France)
