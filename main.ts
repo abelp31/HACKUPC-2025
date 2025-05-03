@@ -50,7 +50,9 @@ const generateGameId = (): string => {
 
 // POST /game/create
 app.post("/game/create", (req: Request, res: Response) => {
+    console.log(1)
     const gameId = generateGameId();
+    console.log(2)
     const newGame: Game = {
         id: gameId,
         questions: predefinedQuestions,
@@ -59,8 +61,11 @@ app.post("/game/create", (req: Request, res: Response) => {
         players: {},
         month: req.body.month
     };
+    console.log(3)
     games.set(gameId, newGame);
+    console.log(4)
     console.log(`Game created with ID: ${gameId}`);
+    console.log(5)
     res.status(201).json({ gameId: newGame.id });
 });
 
@@ -144,6 +149,7 @@ io.on('connection', (socket: CustomSocket) => {
         console.log(`[joinGame] Attempt by ${socket.id}: GameID=${gameId}, PlayerName=${playerName}, OriginCountry=${originCountry}`);
         // Validation...
         if (!gameId || !playerName || !originCountry || !maxBudget) { socket.emit('error', 'Game ID, Player Name, origin country, desired dates and maxBudget are required.'); return; }
+        console.log({ gameId, games })
         const game = games.get(gameId);
         if (!game) { socket.emit('error', 'Game not found.'); return; }
         if (game.state !== 'waiting') { socket.emit('error', 'Game has already started or finished.'); return; }

@@ -10,15 +10,9 @@ interface IndicativeSearchParam {
 
 
 export const filterWithConstraints = async (players: Player[], destinationsIsoCountry: string[], month: number) => {
-
-
     let finalDestinations = destinationsIsoCountry.slice();
-    // I have a list of players which each one has a player.maxBudget and player.originCountry (iso-code). I need to filter the destinationsIsoCountry array by the players maxBudget and originCountry.
-    // The origin iso code should be the same as the player originCountry, and the destination iso code should be in the destinationsIsoCountry array.
-    // The resulting data should be an array of country isoCodes
-    // Code:
-    // 1. Get the indicative search data from the API
 
+    // TODO: fer servir promise.all()
     for (const player of players) {
         for (const destinationIsoCode of destinationsIsoCountry) {
             const destinationData = searchCountryByISO(destinationIsoCode);
@@ -26,15 +20,22 @@ export const filterWithConstraints = async (players: Player[], destinationsIsoCo
                 console.error(`Destination ${destinationIsoCode} not found`);
                 continue;
             }
-            const leg: IndicativeSearchParam = {
-                originIsoCode: player.originCountry,
-                destinationIsoCode: destinationData.isoCode
-            };
+            const legs: IndicativeSearchParam[] = [
+                {
+                    originIsoCode: player.originCountry,
+                    destinationIsoCode: destinationData.isoCode
+                },
+                {
+                    originIsoCode: destinationData.isoCode,
+                    destinationIsoCode: player.originCountry
+                }
+            ];
 
-            const data = await getIndicativeSearch([leg], month);
+            const data = await getIndicativeSearch(legs, month);
 
             // if any if data.content.results.quotes has a minPrice.amount > player.maxBudget, then remove the destination from the finalDestinations array
             if (data) {
+                // TODO: cal comprovar el leg d'anada i de tornada, sumar-ho i que sigui <= player.maxBudget
                 const filteredResults = Object.entries(data.content.results.quotes).filter(([key, value]) => {
                     const minPrice = parseFloat((value as any).minPrice.amount);
                     return minPrice <= player.maxBudget;
@@ -88,7 +89,7 @@ export const getIndicativeSearch = async (legs: IndicativeSearchParam[], month: 
     const response = await fetch('https://partners.api.skyscanner.net/apiservices/v3/flights/indicative/search', {
         method: 'POST',
         headers: {
-            "x-api-key": "sh967490139224896692439644109194",
+            "x-api-key": API_KEY,
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({

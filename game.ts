@@ -85,12 +85,15 @@ export async function processGameResults(game: Game) {
         }
 
         // 3. Construct Prompt
-        const prompt = `
+        const sharedPrompt = `
 We asked ${playerCount} friends the following questions to choose a travel destination, and these were the aggregated results of their choices:
 ${formattedAnswers}
+`
 
+        const prompt = `
+${sharedPrompt}
 
-Based *only* on these preferences, suggest a list of 30 travel destinations (countries only!!!).
+Based *only* on these preferences, suggest a list of 15 travel destinations (countries only!!!).
 For each destination, return the following:
 - iso country code (ISO 3166-1 alpha-2)
 - country name
@@ -135,6 +138,8 @@ For each destination, return the following:
 
             // TODO: cridar genai per final destinations that match criteria, obtenir full dades
 
+            const data = await generateFinalData(sharedPrompt, finalDestinationsThatMatchCriteria);
+
         } catch (apiError) {
             console.error(`Error calling Gemini API for game ${game.id}:`, apiError);
             errorProcessing = 'Could not generate AI suggestions due to an API error.';
@@ -160,4 +165,40 @@ For each destination, return the following:
     // Optional: Clean up the game from memory after processing
     // games.delete(game.id);
     // console.log(`Game ${game.id} removed from memory.`);
+}
+
+const generateFinalData = async (sharedPrompt: string, destinations: string[]) => {
+    const result = await genAI.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: `
+${sharedPrompt}
+
+We have a list of ${destinations.length} isoCodes of available travel destinations.
+
+For each destination, return the following:
+- destinationName: The name of the destination (country). Add the emoji flag of the country at the start of the name if available.
+- reasoning: A short explanation of why this destination is a good fit for the group. Make sure to include the most relevant features based on the aggregated answers.
+- features: A list of features that make this destination appealing (e.g., "beach", "mountains", "historical sites"). Include an emoji in  the start of each feature. Make sure to be distinctive and not repeat the same features for different destinations.
+- countryIsoCode: The ISO code of the country where the destination is located (e.g., "FR" for France)
+        `,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        destinationName: { type: Type.STRING },
+                        reasoning: { type: Type.STRING },
+                        features: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        countryIsoCode: { type: Type.STRING },
+                    },
+                    required: ["destinationName", "reasoning", "features", "countryIsoCode"],
+                }
+            },
+        }
+    });
+    const parsed = JSON.parse(result.text!);
+    console.log(JSON.stringify(parsed, null, 2));
+    return parsed;
 }
