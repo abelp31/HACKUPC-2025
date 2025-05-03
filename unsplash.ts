@@ -3,6 +3,8 @@ const UNSPLASH_API_KEY = process.env.UNSPLASH_API_KEY;
 const cache = new Map<string, string>();
 
 export const getUnsplashImages = async (query: string) => {
+    query = removeEmoji(query);
+
     if (cache.has(query)) {
         return cache.get(query);
     }
@@ -27,6 +29,8 @@ export const getUnsplashImages = async (query: string) => {
 }
 
 export const getWikipediaImage = async (query: string) => {
+    query = removeEmoji(query);
+
     if (cache.has(query)) {
         return cache.get(query);
     }
@@ -50,4 +54,17 @@ export const getWikipediaImage = async (query: string) => {
     cache.set(query, imageUrl);
 
     return imageUrl;
+}
+
+const removeEmoji = (str: string) => {
+    const emojiRegex = /^\p{Extended_Pictographic}(?:\p{Emoji_Modifier}|\u{FE0F}|\u{200D}\p{Extended_Pictographic})*/u;
+
+    if (emojiRegex.test(str)) {
+        // If it does, replace the matched emoji sequence with an empty string
+        // The result of replace is guaranteed to be a string here.
+        return str.replace(emojiRegex, '').trimStart(); // Also trim leading whitespace that might follow emoji
+    } else {
+        // If it doesn't start with an emoji, return the original string
+        return str;
+    }
 }
