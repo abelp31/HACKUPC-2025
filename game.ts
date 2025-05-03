@@ -85,7 +85,7 @@ ${formattedAnswers}
         const prompt = `
 ${sharedPrompt}
 
-Based *only* on these preferences, suggest a list of 15 travel destinations (cities only, no countries).
+Based *only* on these preferences, suggest a list of 10 travel destinations (cities only, no countries).
 For each destination, return the following:
 - cityName: The name of the city (e.g., "Barcelona")
 - iataCode: The IATA code of the most important airport near the city (e.g., "BCN")
