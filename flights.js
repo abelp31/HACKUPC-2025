@@ -29,6 +29,7 @@ async function obtenerPrecioVueloSkyscanner(origen, destino, fechaIda, fechaVuel
                     ],
                     cabinClass: 'CABIN_CLASS_ECONOMY',
                     adults: 1,
+                    includeSustainabilityData: true,
                 },
             }),
         });
@@ -112,10 +113,11 @@ function extraerInformacionVuelos(resultados, escalas) {
     let num = 1;
     for (const itinerario of itinerarios) {
         if (itinerario.pricingOptions && itinerario.pricingOptions.length > 0) {
-            const precio = parseFloat(itinerario.pricingOptions[0].price.amount / 1000);
+            const precio = Math.ceil(itinerario.pricingOptions[0].price.amount / 1000);
             const opcionesDeVueloIds = itinerario.legIds;
             const detallesVuelosIda = [];
             const detallesVuelosVuelta = [];
+            var sustainabilityData_perc = Math.floor(itinerario.sustainabilityData.ecoContenderDelta);
 
             if (opcionesDeVueloIds && opcionesDeVueloIds.length === 2) {
                 const legIda = opcionesDeVueloIds[0];
@@ -191,7 +193,8 @@ function extraerInformacionVuelos(resultados, escalas) {
                     }
                     vuelosInfo.push({
                         precio: precio,
-                        escala: min_escala
+                        escala: min_escala,
+                        sustainabilityData_perc: sustainabilityData_perc
                     });
                 }
             }
@@ -201,9 +204,10 @@ function extraerInformacionVuelos(resultados, escalas) {
     // ordenar los vuelos por precio de menor a mayor
     vuelosInfo.sort((a, b) => a.precio - b.precio);
 
-
-    var slicedvuelosInfo = vuelosInfo.slice(0, 1);
-    return slicedvuelosInfo;
+    var vueloInfo_barato = vuelosInfo[0];
+    vuelosInfo.sort((a, b) => b.sustainabilityData_perc - a.sustainabilityData_perc);
+    var vueloInfo_sostenible = vuelosInfo[0];
+    return { vueloInfo_barato, vueloInfo_sostenible };
 }
 
 

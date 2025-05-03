@@ -30,7 +30,18 @@ interface FlightCheck {
 
 // Result structure for each flight check (without error flag)
 interface FlightCheckResult extends FlightCheck {
-    flightInfo: { precio: number; escala: number }[] | null; // Result from obtenerVuelos
+    flightInfo: {
+        vueloInfo_barato: {
+            precio: number;
+            escala: number;
+            sustainabilityData_perc: number;
+        },
+        vueloInfo_sostenible: {
+            precio: number;
+            escala: number;
+            sustainabilityData_perc: number;
+        }
+    } | null; // Result from obtenerVuelos
     isAffordable: boolean;
     // Removed 'error' flag
 }
@@ -51,8 +62,16 @@ interface DestinationData {
 // Interface for the personalized recommendation sent to each player
 interface PersonalizedDestinationData extends DestinationData {
     playerFlightInfo?: { // Make optional in case flight info is missing
-        price: number;
-        stops: number;
+        cheap: {
+            price: number;
+            stops: number;
+            sustainabilityData_perc: number;
+        },
+        sustainable: {
+            price: number;
+            stops: number;
+            sustainabilityData_perc: number;
+        }
     } | null; // Use null to indicate no flight found for this player specifically
     isAffordableForPlayer: boolean; // Explicitly state if affordable for *this* player
 }
@@ -246,13 +265,21 @@ For each destination, return the following JSON format:
 
             if (playerSpecificFlightResult) {
                 // Check flightInfo directly; 'error' flag is removed
-                if (playerSpecificFlightResult.flightInfo && playerSpecificFlightResult.flightInfo.length > 0) {
+                if (playerSpecificFlightResult.flightInfo && playerSpecificFlightResult.flightInfo.vueloInfo_barato) {
                     playerFlightInfo = {
-                        price: playerSpecificFlightResult.flightInfo[0].precio,
-                        stops: playerSpecificFlightResult.flightInfo[0].escala
+                        cheap: {
+                            price: playerSpecificFlightResult.flightInfo.vueloInfo_barato.precio,
+                            stops: playerSpecificFlightResult.flightInfo.vueloInfo_barato.escala,
+                            sustainabilityData_perc: playerSpecificFlightResult.flightInfo.vueloInfo_barato.sustainabilityData_perc
+                        },
+                        sustainable: {
+                            price: playerSpecificFlightResult.flightInfo.vueloInfo_sostenible.precio,
+                            stops: playerSpecificFlightResult.flightInfo.vueloInfo_sostenible.escala,
+                            sustainabilityData_perc: playerSpecificFlightResult.flightInfo.vueloInfo_sostenible.sustainabilityData_perc
+                        },
                     };
                     isAffordableForPlayer = playerSpecificFlightResult.isAffordable;
-                    console.log(`Flight info found for player ${socketId} to ${validDest.iataCode}: Price ${playerFlightInfo.price}, Affordable: ${isAffordableForPlayer}`);
+                    console.log(`Flight info found for player ${socketId} to ${validDest.iataCode}:`, playerFlightInfo);
                 } else {
                     // Flight info was null or empty (no flights found by API)
                     playerFlightInfo = null;
@@ -373,9 +400,21 @@ const filterMatchedCriterias = async (
         const promise = (async (): Promise<FlightCheckResult> => {
             // No try/catch around obtenerVuelos. If it throws, this promise rejects.
             // console.log(`Calling obtenerVuelos for ${check.socketId} to ${check.destinationIata}`, { playerOriginIata: check.playerOriginIata, destinationIata: check.destinationIata, startDate: game.startDate, endDate: game.endDate });
-            const flightInfo = await obtenerVuelos(check.playerOriginIata, check.destinationIata, game.startDate, game.endDate);
+            const flightInfo: {
+                vueloInfo_barato: {
+                    precio: number;
+                    escala: number;
+                    sustainabilityData_perc: number;
+                },
+                vueloInfo_sostenible: {
+                    precio: number;
+                    escala: number;
+                    sustainabilityData_perc: number;
+                }
+            } = await obtenerVuelos(check.playerOriginIata, check.destinationIata, game.startDate, game.endDate);
 
-            const isAffordable = flightInfo !== null && flightInfo.length > 0 && flightInfo[0].precio <= check.playerBudget;
+            console.log(`FLIGHT INFO IS ${JSON.stringify(flightInfo)}`);
+            const isAffordable = flightInfo && flightInfo.vueloInfo_barato && flightInfo.vueloInfo_barato.precio <= check.playerBudget;
 
             return {
                 ...check,
@@ -411,8 +450,8 @@ const filterMatchedCriterias = async (
         if (isInvalid) {
             invalidDestinationIatas.add(destinationIata);
             const firstInvalidResult = results.find(r => !r.isAffordable)!;
-            const reason = (firstInvalidResult.flightInfo && firstInvalidResult.flightInfo.length > 0)
-                ? `Unaffordable (Price: ${firstInvalidResult.flightInfo[0].precio}, Budget: ${firstInvalidResult.playerBudget})`
+            const reason = (firstInvalidResult.flightInfo && firstInvalidResult.flightInfo.vueloInfo_barato)
+                ? `Unaffordable (Price: ${firstInvalidResult.flightInfo.vueloInfo_barato.precio}, Budget: ${firstInvalidResult.playerBudget})`
                 : 'No flight info/empty result';
             console.log(`Marking destination ${destinationIata} (${firstInvalidResult.cityName}) as invalid due to player ${firstInvalidResult.socketId}. Reason: ${reason}`);
         }
