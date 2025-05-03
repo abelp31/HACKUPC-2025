@@ -1,8 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { io } from "./main";
 import { Game } from "./types";
-import { LIMITED_COUNTRIES } from "./countries";
-import { LIMITED_CITIES } from "./cities";
+import { filterWithConstraints } from "./skyscanner";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 if (!GEMINI_API_KEY) {
@@ -91,12 +90,10 @@ We asked ${playerCount} friends the following questions to choose a travel desti
 ${formattedAnswers}
 
 
-Based *only* on these preferences, suggest a list of 15 travel destinations (countries only!!!).
+Based *only* on these preferences, suggest a list of 30 travel destinations (countries only!!!).
 For each destination, return the following:
-- destinationName: The name of the destination (country)
-- reasoning: A short explanation of why this destination is a good fit for the group
-- features: A list of features that make this destination appealing (e.g., "beach", "mountains", "historical sites"). Include an emoji in  the start of each feature.
-- countryIsoCode: The ISO code of the country where the destination is located (e.g., "FR" for France)
+- iso country code (ISO 3166-1 alpha-2)
+- country name
 `;
 
         console.log(`--- Generated Prompt for Game ${game.id} ---`);
@@ -118,12 +115,10 @@ For each destination, return the following:
                         items: {
                             type: Type.OBJECT,
                             properties: {
-                                destinationName: { type: Type.STRING },
-                                reasoning: { type: Type.STRING },
-                                features: { type: Type.ARRAY, items: { type: Type.STRING } },
-                                countryIsoCode: { type: Type.STRING },
+                                isoCountry: { type: Type.STRING },
+                                countryName: { type: Type.STRING },
                             },
-                            required: ["destinationName", "reasoning", "features", "countryIsoCode"],
+                            required: ["isoCountry", "countryName"],
                         }
                     },
                 }
@@ -134,8 +129,11 @@ For each destination, return the following:
             console.log(suggestions);
             console.log(`-------------------------------------------------`);
 
-            // Attempt to parse the JSON response
 
+            const finalDestinationsThatMatchCriteria = await filterWithConstraints(Object.values(game.players), suggestions.map(dest => dest.isoCountry), game.month);
+            console.log(`Final destinations that match criteria: ${finalDestinationsThatMatchCriteria}`);
+
+            // TODO: cridar genai per final destinations that match criteria, obtenir full dades
 
         } catch (apiError) {
             console.error(`Error calling Gemini API for game ${game.id}:`, apiError);

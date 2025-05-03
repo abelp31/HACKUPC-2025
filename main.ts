@@ -7,6 +7,7 @@ import { Game, Question, PlayerAnswer, predefinedQuestions } from './types';
 import cors from 'cors';
 // Import path module for resolving file paths
 import path from 'path';
+import lookupRouter from './lookup';
 import { processGameResults } from './game';
 
 interface CustomSocket extends Socket {
@@ -55,7 +56,8 @@ app.post("/game/create", (req: Request, res: Response) => {
         questions: predefinedQuestions,
         currentQuestionIndex: 0,
         state: 'waiting',
-        players: {}
+        players: {},
+        month: req.body.month
     };
     games.set(gameId, newGame);
     console.log(`Game created with ID: ${gameId}`);
@@ -72,6 +74,8 @@ app.get("/game/:id", (req: Request, res: Response) => {
     }
     res.json({ id: game.id, state: game.state, playerCount: Object.keys(game.players).length });
 });
+
+app.use(lookupRouter)
 
 // --- Socket.IO Setup ---
 
@@ -125,7 +129,8 @@ games.set("TESTGM", {
     questions: predefinedQuestions,
     currentQuestionIndex: 0,
     state: 'waiting',
-    players: {}
+    players: {},
+    month: 7
 });
 console.log("Test game 'TESTGM' created using predefined questions.");
 
@@ -135,21 +140,21 @@ io.on('connection', (socket: CustomSocket) => {
     console.log(`Client connected: ${socket.id}. Waiting for join details...`);
 
     // Event Listener for Joining a Game
-    socket.on('joinGame', ({ gameId, playerName, originCountry, month }: { gameId: string, playerName: string, originCountry: string, month: number }) => {
+    socket.on('joinGame', ({ gameId, playerName, originCountry, maxBudget }: { gameId: string, playerName: string, originCountry: string, maxBudget: number }) => {
         console.log(`[joinGame] Attempt by ${socket.id}: GameID=${gameId}, PlayerName=${playerName}, OriginCountry=${originCountry}`);
         // Validation...
-        if (!gameId || !playerName || !month || !originCountry) { socket.emit('error', 'Game ID, Player Name, origin country and desired dates are required.'); return; }
+        if (!gameId || !playerName || !originCountry || !maxBudget) { socket.emit('error', 'Game ID, Player Name, origin country, desired dates and maxBudget are required.'); return; }
         const game = games.get(gameId);
         if (!game) { socket.emit('error', 'Game not found.'); return; }
         if (game.state !== 'waiting') { socket.emit('error', 'Game has already started or finished.'); return; }
         if (socket.gameId) { socket.emit('error', 'You are already in a game.'); return; }
-        
+
 
         // Successful Join...
         console.log(`[joinGame] Success: ${socket.id} | Player: ${playerName} | Game: ${gameId} | OriginCountry: ${originCountry}`);
         socket.gameId = gameId;
         socket.playerName = playerName;
-        game.players[socket.id] = { name: playerName, originCountry, month, answers: [] };
+        game.players[socket.id] = { name: playerName, originCountry, answers: [], maxBudget };
         socket.join(gameId);
         socket.emit('joinSuccess', { gameId: game.id, players: game.players, state: game.state });
         socket.to(gameId).emit('playerJoined', { playerId: socket.id, playerName: playerName, players: game.players });

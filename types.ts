@@ -23,8 +23,8 @@ export interface PlayerAnswer {
 export interface Player {
     name: string;
     originCountry: string;
+    maxBudget: number;
     answers: PlayerAnswer[]; // Array of answers submitted by the player
-    month: number;
 }
 
 // Represents the overall game state
@@ -32,6 +32,7 @@ export interface Game {
     id: string; // Unique game ID (e.g., "ABC123")
     questions: Question[]; // Array of questions for the game (loaded from JSON)
     currentQuestionIndex: number; // Index of the question currently being asked
+    month: number;
     state: 'waiting' | 'playing' | 'finished'; // Current phase of the game
     players: {
         [socketId: string]: Player; // Map socket IDs to player data
