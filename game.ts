@@ -167,10 +167,10 @@ const fillImages = async (destinations: DestinationData[]): Promise<DestinationD
         } else {
             // If the image URL is missing, fetch it.
             try {
-                const imageUrl = await getWikipediaImage(destination.destinationName);
+                const imageUrl = await getWikipediaImage(destination.destinationNameNoEmoji);
                 return { ...destination, imageUrl: imageUrl };
             } catch (error) {
-                console.error(`Failed to fetch image for ${destination.destinationName}:`, error);
+                console.error(`Failed to fetch image for ${destination.destinationNameNoEmoji}:`, error);
                 return { ...destination, imageUrl: "https://http.cat/images/202.jpg" };
             }
         }
@@ -253,6 +253,7 @@ const filterMatchedCriterias = async (game: Game, suggestions: { cityName: strin
 
 interface DestinationData {
     destinationName: string,
+    destinationNameNoEmoji: string,
     goodReasons: string[],
     badReasons: string[],
     features: string[],
@@ -273,6 +274,7 @@ The destinations are: ${destinations.map(d => `${d.cityName} (${d.iataCode})`).j
 
 Now, for each city destination, return the following:
 - destinationName: The name of the destination (city name). Add the emoji flag of the country at the start of the name if available.
+- destinationNameNoEmoji: The name of the destination (city name) without the emoji flag.
 - goodReasons: A short list of 5 elements about why this destination is a good fit for the group. Make sure to include the most relevant features based on the aggregated answers.
 - badReasons: A short list of 5 elements about why this destination might not be the best choice (e.g: anti lgbt laws, robbery, political situation, recent conflicts, difficult visa requirements, etc). Take into account, if needed, the answers of the different questions.
 - features: A list of features that make this destination appealing (e.g: beach, mountains, historical sites, local cuisine, shopping, etc). Include an emoji in  the start of each feature. Highlight the unique or defining features of each destination compared to the others on the list.
@@ -287,13 +289,14 @@ Now, for each city destination, return the following:
                     type: Type.OBJECT,
                     properties: {
                         destinationName: { type: Type.STRING },
+                        destinationNameNoEmoji: { type: Type.STRING },
                         goodReasons: { type: Type.ARRAY, items: { type: Type.STRING } },
                         badReasons: { type: Type.ARRAY, items: { type: Type.STRING } },
                         features: { type: Type.ARRAY, items: { type: Type.STRING } },
                         countryIsoCode: { type: Type.STRING },
                         bestSeason: { type: Type.STRING },
                     },
-                    required: ["destinationName", "goodReasons", "badReasons", "features", "countryIsoCode", "bestSeason"],
+                    required: ["destinationName", "destinationNameNoEmoji", "goodReasons", "badReasons", "features", "countryIsoCode", "bestSeason"],
                 }
             },
         }
