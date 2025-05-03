@@ -47,8 +47,8 @@ async function obtenerPrecioVueloSkyscanner(origen, destino, fechaIda, fechaVuel
         let resultadosCompletos = false;
         let resultados = null;
         let intentos = 0;
-        const maxIntentos = 20;
-        const intervaloPolling = 100;
+        const maxIntentos = 35;
+        const intervaloPolling = 250;
 
         while (!resultadosCompletos && intentos < maxIntentos) {
             intentos++;

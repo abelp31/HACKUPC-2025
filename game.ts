@@ -14,250 +14,407 @@ if (!GEMINI_API_KEY) {
 const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 console.log("Google AI SDK initialized.");
 
+interface InitialDestinationSuggestion {
+    cityName: string;
+    iataCode: string;
+}
+
+// Structure for checking individual player flights
+interface FlightCheck {
+    socketId: string; // Use socketId for unique player identification
+    playerOriginIata: string;
+    playerBudget: number;
+    destinationIata: string;
+    cityName: string; // Carry suggestion data along
+}
+
+// Result structure for each flight check (without error flag)
+interface FlightCheckResult extends FlightCheck {
+    flightInfo: { precio: number; escala: number }[] | null; // Result from obtenerVuelos
+    isAffordable: boolean;
+    // Removed 'error' flag
+}
+
+// Updated DestinationData interface to include iataCode
+interface DestinationData {
+    destinationName: string; // With emoji flag
+    destinationNameNoEmoji: string; // Without emoji flag
+    iataCode: string; // Added IATA code
+    goodReasons: string[];
+    badReasons: string[];
+    features: string[];
+    countryIsoCode: string;
+    bestSeason: string;
+    imageUrl: string | undefined; // Optional image URL
+};
+
+// Interface for the personalized recommendation sent to each player
+interface PersonalizedDestinationData extends DestinationData {
+    playerFlightInfo?: { // Make optional in case flight info is missing
+        price: number;
+        stops: number;
+    } | null; // Use null to indicate no flight found for this player specifically
+    isAffordableForPlayer: boolean; // Explicitly state if affordable for *this* player
+}
+
+
 /**
  * Processes the results of a finished game, aggregates answers,
- * constructs a prompt for Gemini, and calls the API.
+ * gets personalized recommendations and flight info, and emits results to each player.
+ * NOTE: Removed error handling (try/catch blocks). Errors in async operations
+ * (Gemini, flights, image fetching) will likely cause this function to crash.
  * @param game The finished Game object.
  */
 export async function processGameResults(game: Game) {
     console.log(`Processing results for finished game: ${game.id}`);
     const playerCount = Object.keys(game.players).length;
-    let recommendations: DestinationData[] = []; // Default empty recommendations
     let aggregatedResults: { [questionId: number]: { questionText: string, options: { [optionId: number]: { optionText: string, count: number } } } } = {};
-    let errorProcessing = null; // Store potential processing errors
+    // Removed errorProcessing variable
 
-    try {
-        if (playerCount === 0) {
-            console.log("No players in the game, skipping result processing.");
-            socketServer.to(game.id).emit('gameFinished', {
-                players: game.players,
-                aggregatedResults: {},
-                suggestions: [],
-                message: "Game finished, but no players participated."
-            });
-            return;
-        }
+    if (playerCount === 0) {
+        console.log("No players in the game, skipping result processing.");
+        return;
+    }
 
-        // 1. Aggregate Answers
-        game.questions.forEach(q => {
-            aggregatedResults[q.id] = { questionText: q.text, options: {} };
-            q.options.forEach(opt => {
-                aggregatedResults[q.id].options[opt.id] = { optionText: opt.text, count: 0 };
-            });
+    // 1. Aggregate Answers (same as before)
+    game.questions.forEach(q => {
+        aggregatedResults[q.id] = { questionText: q.text, options: {} };
+        q.options.forEach(opt => {
+            aggregatedResults[q.id].options[opt.id] = { optionText: opt.text, count: 0 };
         });
-        for (const socketId in game.players) {
-            const player = game.players[socketId];
-            player.answers.forEach(answer => {
-                if (aggregatedResults[answer.questionId]) {
-                    answer.selectedOptionIds.forEach(optionId => {
-                        if (aggregatedResults[answer.questionId].options[optionId]) {
-                            aggregatedResults[answer.questionId].options[optionId].count++;
-                        }
-                    });
-                }
-            });
-        }
-
-        // 2. Format Aggregated Data for Prompt
-        let formattedAnswers = "";
-        for (const qId in aggregatedResults) {
-            const questionResult = aggregatedResults[qId];
-            formattedAnswers += `\nQuestion: "${questionResult.questionText}"\n`;
-            let hasVotes = false;
-            for (const optId in questionResult.options) {
-                const optionResult = questionResult.options[optId];
-                if (optionResult.count > 0) {
-                    formattedAnswers += `  - "${optionResult.optionText}": ${optionResult.count} votes\n`;
-                    hasVotes = true;
-                }
+    });
+    for (const socketId in game.players) {
+        const player = game.players[socketId];
+        player.answers.forEach(answer => {
+            if (aggregatedResults[answer.questionId]) {
+                answer.selectedOptionIds.forEach(optionId => {
+                    if (aggregatedResults[answer.questionId].options[optionId]) {
+                        aggregatedResults[answer.questionId].options[optionId].count++;
+                    }
+                });
             }
-            if (!hasVotes) {
-                formattedAnswers += "  (No votes)\n";
+        });
+    }
+
+    // 2. Format Aggregated Data for Prompt (same as before)
+    let formattedAnswers = "";
+    for (const qId in aggregatedResults) {
+        const questionResult = aggregatedResults[qId];
+        formattedAnswers += `\nQuestion: "${questionResult.questionText}"\n`;
+        let hasVotes = false;
+        for (const optId in questionResult.options) {
+            const optionResult = questionResult.options[optId];
+            if (optionResult.count > 0) {
+                formattedAnswers += `  - "${optionResult.optionText}": ${optionResult.count} votes\n`;
+                hasVotes = true;
             }
         }
+        if (!hasVotes) {
+            formattedAnswers += "  (No votes)\n";
+        }
+    }
+    console.log("Formatted answers for prompt:", formattedAnswers);
 
-        // 3. Construct Prompt
-        const sharedPrompt = `
+    // 3. Construct Shared Prompt Base (same as before)
+    const sharedPrompt = `
 We asked ${playerCount} friends the following questions to choose a travel destination, and these were the aggregated results of their choices:
 ${formattedAnswers}
-`
+`;
 
-        const prompt = `
+    // 4. Get Initial Suggestions from Gemini (No try/catch)
+    console.log(`Sending initial prompt to Gemini for game ${game.id}...`);
+    const firstPrompt = `
 ${sharedPrompt}
 
-Based *only* on these preferences, suggest a list of 10 travel destinations (cities only, no countries).
-For each destination, return the following:
+Based *only* on these preferences, suggest a list of up to 10 travel destinations (cities only, no countries).
+For each destination, return the following JSON format:
 - cityName: The name of the city (e.g., "Barcelona")
 - iataCode: The IATA code of the most important airport near the city (e.g., "BCN")
 `;
-
-        console.log(`--- Generated Prompt for Game ${game.id} ---`);
-        console.log(`-----------------------------------------`);
-
-        try {
-            console.log(`Sending prompt to Gemini for game ${game.id}...`);
-
-            const result = await genAI.models.generateContent({
-                model: "gemini-2.0-flash",
-                contents: prompt,
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                cityName: { type: Type.STRING },
-                                iataCode: { type: Type.STRING },
-                            },
-                            required: ["cityName", "iataCode"],
-                        }
+    const initialResult = await genAI.models.generateContent({
+        model: "gemini-1.5-flash", // Or your preferred model
+        contents: firstPrompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        cityName: { type: Type.STRING },
+                        iataCode: { type: Type.STRING },
                     },
+                    required: ["cityName", "iataCode"],
                 }
-            });
-            const firstRoundSuggestions = JSON.parse(result.text!) as { cityName: string, iataCode: string }[];
-
-            console.log(`--- Gemini Response Raw Text for Game ${game.id} ---`);
-            console.log(firstRoundSuggestions);
-            console.log(`-------------------------------------------------`);
-
-            const destinationsThatMatchPlayerCriterias = await filterMatchedCriterias(game, firstRoundSuggestions);
-
-            recommendations = await generateFinalData(sharedPrompt, destinationsThatMatchPlayerCriterias);
-            console.log("FINAL DATA: ", recommendations);
-
-        } catch (apiError) {
-            console.error(`Error calling Gemini API for game ${game.id}:`, apiError);
-            errorProcessing = 'Could not generate AI suggestions due to an API error.';
-        }
-
-    } catch (processingError) {
-        console.error(`Error during game result processing (before API call) for game ${game.id}:`, processingError);
-        errorProcessing = "An internal error occurred while processing results.";
-    }
-
-
-
-
-    // 5. Emit Final Results
-    console.log(`Emitting final results for game ${game.id}`);
-    const finalPayload: any = {
-        players: game.players,
-        aggregatedResults: aggregatedResults,
-        recommendations: (await fillImages(recommendations)) as any, // Cast to any[] to avoid TypeScript errors
-    };
-    if (errorProcessing) {
-        finalPayload.error = errorProcessing; // Include error message if any occurred
-    }
-    socketServer.to(game.id).emit('gameFinished', finalPayload);
-
-    // Optional: Clean up the game from memory after processing
-    // games.delete(game.id);
-    // console.log(`Game ${game.id} removed from memory.`);
-}
-
-const fillImages = async (destinations: DestinationData[]): Promise<DestinationData[]> => {
-    // 1. Create an array of promises
-    const promises = destinations.map(async (destination) => {
-        // If the image URL already exists, return the destination object as is.
-        if (destination.imageUrl) {
-            // No async operation needed, return the original object directly.
-            // Promise.resolve() is implicitly handled by async function return.
-            return destination;
-        } else {
-            // If the image URL is missing, fetch it.
-            try {
-                const imageUrl = await getWikipediaImage(destination.destinationNameNoEmoji);
-                return { ...destination, imageUrl: imageUrl };
-            } catch (error) {
-                console.error(`Failed to fetch image for ${destination.destinationNameNoEmoji}:`, error);
-                return { ...destination, imageUrl: "https://http.cat/images/202.jpg" };
             }
         }
     });
 
+    // Safely access the response text - if it's empty/invalid JSON, JSON.parse will throw an error
+    const initialResponseText = initialResult.text!;
+    if (!initialResponseText) {
+        // If Gemini gives no text, throw an error which will halt processing.
+        throw new Error("Gemini API returned an empty response for initial suggestions.");
+    }
+    const initialSuggestions = JSON.parse(initialResponseText) as InitialDestinationSuggestion[];
+
+    console.log(`--- Gemini Initial Suggestions for Game ${game.id} ---`);
+    console.log(initialSuggestions);
+    console.log(`-------------------------------------------------`);
+
+    if (initialSuggestions.length === 0) {
+        console.log(`Gemini returned no initial suggestions for game ${game.id}. Halting processing.`);
+        // Emit a simple message to the whole game room and stop
+        socketServer.to(game.id).emit('gameFinished', {
+            players: game.players,
+            aggregatedResults: aggregatedResults,
+            recommendations: [],
+            message: "AI could not suggest any destinations based on the preferences." // Use message instead of error
+        });
+        return;
+    }
+
+
+    // 5. Filter Destinations Based on Player Budgets and Get Flight Details (No try/catch)
+    const filterResult = await filterMatchedCriterias(game, initialSuggestions);
+    const { finalDestinations, validFlightResults } = filterResult;
+
+    if (finalDestinations.length === 0) {
+        console.log(`No destinations were affordable for all players in game ${game.id}. Halting processing.`);
+        // Emit message to the whole game room and stop
+        socketServer.to(game.id).emit('gameFinished', {
+            players: game.players,
+            aggregatedResults: aggregatedResults,
+            recommendations: [],
+            message: "No suggested destinations fit within everyone's budget." // Use message
+        });
+        return;
+    }
+
+
+    // 6. Generate Detailed Destination Data from Gemini for the *Valid* Destinations (No try/catch)
+    console.log(`Generating detailed data for ${finalDestinations.length} valid destinations...`);
+    let detailedDestinations = await generateFinalData(sharedPrompt, finalDestinations);
+    console.log("Detailed Destination Data Received:", detailedDestinations);
+
+    // Add images (No try/catch)
+    detailedDestinations = await fillImages(detailedDestinations);
+    console.log("Destination Data with Images:", detailedDestinations);
+
+
+    // 7. Prepare and Emit Personalized Results to Each Player
+    console.log(`Preparing and emitting personalized results for game ${game.id}`);
+
+    // Create a map of detailed destinations by IATA code for quick lookup
+    const detailedDestinationsMap = new Map<string, DestinationData>();
+    detailedDestinations.forEach(dest => {
+        if (dest.iataCode) {
+            detailedDestinationsMap.set(dest.iataCode, dest);
+        } else {
+            console.warn(`Destination ${dest.destinationNameNoEmoji} is missing IATA code in detailed data. Skipping map entry.`);
+        }
+    });
+
+
+    // Create a map of flight results by socketId and destinationIata for quick lookup
+    const flightResultsMap = new Map<string, Map<string, FlightCheckResult>>();
+    validFlightResults.forEach(result => {
+        if (!flightResultsMap.has(result.socketId)) {
+            flightResultsMap.set(result.socketId, new Map<string, FlightCheckResult>());
+        }
+        flightResultsMap.get(result.socketId)!.set(result.destinationIata, result);
+    });
+
+    // This loop remains the same - emitting personalized data to each player
+    for (const socketId in game.players) {
+        const player = game.players[socketId];
+        const playerFlightResults = flightResultsMap.get(socketId) || new Map<string, FlightCheckResult>();
+
+        const personalizedRecommendations: PersonalizedDestinationData[] = [];
+
+        finalDestinations.forEach(validDest => {
+            const baseDetails = detailedDestinationsMap.get(validDest.iataCode);
+            if (!baseDetails) {
+                console.warn(`Could not find detailed data for valid destination ${validDest.cityName} (${validDest.iataCode}). Skipping for player ${socketId}.`);
+                return;
+            }
+
+            const playerSpecificFlightResult = playerFlightResults.get(validDest.iataCode);
+
+            let playerFlightInfo: PersonalizedDestinationData['playerFlightInfo'] = null;
+            let isAffordableForPlayer = false;
+
+            if (playerSpecificFlightResult) {
+                // Check flightInfo directly; 'error' flag is removed
+                if (playerSpecificFlightResult.flightInfo && playerSpecificFlightResult.flightInfo.length > 0) {
+                    playerFlightInfo = {
+                        price: playerSpecificFlightResult.flightInfo[0].precio,
+                        stops: playerSpecificFlightResult.flightInfo[0].escala
+                    };
+                    isAffordableForPlayer = playerSpecificFlightResult.isAffordable;
+                    console.log(`Flight info found for player ${socketId} to ${validDest.iataCode}: Price ${playerFlightInfo.price}, Affordable: ${isAffordableForPlayer}`);
+                } else {
+                    // Flight info was null or empty (no flights found by API)
+                    playerFlightInfo = null;
+                    isAffordableForPlayer = false;
+                    console.log(`No flight info array found for player ${socketId} to ${validDest.iataCode}`);
+                }
+            } else {
+                // This case implies the flight check didn't run or wasn't mapped correctly,
+                // which shouldn't happen with the current logic but handled defensively.
+                console.warn(`Missing flight result for player ${socketId} and destination ${validDest.iataCode}`);
+                playerFlightInfo = null;
+                isAffordableForPlayer = false;
+            }
+
+            personalizedRecommendations.push({
+                ...baseDetails,
+                playerFlightInfo: playerFlightInfo,
+                isAffordableForPlayer: isAffordableForPlayer,
+            });
+        });
+
+        // Construct the final payload for this specific player
+        const playerFinalPayload = {
+            players: game.players,
+            aggregatedResults: aggregatedResults,
+            recommendations: personalizedRecommendations,
+            // Removed 'error' field
+        };
+
+        console.log(`Emitting final results to player ${player.name} (Socket ID: ${socketId})`);
+        socketServer.to(socketId).emit('gameFinished', playerFinalPayload); // Emit personalized payload to individual socket
+    }
+
+    // Optional: Clean up the game from memory after processing
+    // delete games[game.id]; // Or use games.delete(game.id) if it's a Map
+    console.log(`Game ${game.id} processing complete. Consider removing from memory.`);
+}
+
+
+/**
+ * Fetches images for destinations. Errors during fetching will propagate.
+ * @param destinations Array of DestinationData objects.
+ * @returns Promise resolving to the array with imageUrl populated.
+ */
+const fillImages = async (destinations: DestinationData[]): Promise<DestinationData[]> => {
+    console.log(`Attempting to fill images for ${destinations.length} destinations.`);
+    const promises = destinations.map(async (destination) => {
+        if (destination.imageUrl) {
+            return destination;
+        }
+        if (!destination.destinationNameNoEmoji) {
+            console.warn("Destination missing name for image search, using placeholder:", destination);
+            // Return with placeholder directly, don't attempt fetch
+            return { ...destination, imageUrl: "https://placehold.co/600x400/eee/ccc?text=Missing+Name" };
+        }
+
+        // Try Wikipedia first - if getWikipediaImage throws, the Promise.all will reject
+        // No try/catch here.
+        console.log(`Attempting Wiki image for ${destination.destinationNameNoEmoji}`);
+        const wikiImageUrl = await getWikipediaImage(destination.destinationNameNoEmoji);
+        console.log(`Got Wiki image for ${destination.destinationNameNoEmoji}`);
+        return { ...destination, imageUrl: wikiImageUrl };
+
+        // Removed fallback logic (Unsplash/placeholder) as the primary fetch
+        // will now halt execution on error if not caught higher up.
+        // If you *need* fallbacks even without try/catch, you'd have to structure
+        // getWikipediaImage itself to return null/undefined on error instead of throwing.
+    });
+
+    // If any promise in 'promises' rejects, Promise.all will reject.
     return await Promise.all(promises);
 };
 
+
 /**
- * Filters destination suggestions based on whether all players can afford the flight within their budget.
- * Uses Promise.all to fetch flight information concurrently.
+ * Filters destination suggestions based on whether *all* players can afford the flight.
+ * Fetches flight information concurrently. Errors in flight fetching will propagate.
  *
- * @param {Game} game - The game object containing players and dates.
- * @param {DestinationSuggestion[]} suggestions - An array of potential destination suggestions.
- * @returns {Promise<DestinationSuggestion[]>} A promise that resolves with the filtered list of destinations.
+ * @param game The game object containing players, dates.
+ * @param suggestions An array of potential destination suggestions {cityName, iataCode}.
+ * @returns A promise resolving with an object containing:
+ * - finalDestinations: An array of destinations affordable by *all* players.
+ * - validFlightResults: An array of FlightCheckResult for *all* checks made for the *finalDestinations*.
  */
-const filterMatchedCriterias = async (game: Game, suggestions: { cityName: string, iataCode: string }[]) => {
-    const originDestinationCache = new Map<string, { precio: number; escala: number }[]>();
+const filterMatchedCriterias = async (
+    game: Game,
+    suggestions: InitialDestinationSuggestion[]
+): Promise<{ finalDestinations: InitialDestinationSuggestion[], validFlightResults: FlightCheckResult[] }> => {
 
-    // 1. Create a list of all flight checks needed (Player x Suggestion)
-    const flightChecks = [];
-    for (const player of Object.values(game.players)) {
+    const originDestinationCache = new Map<string, Promise<FlightCheckResult>>();
+
+    // 1. Create a list of all unique flight checks needed
+    const flightChecks: FlightCheck[] = [];
+    for (const socketId in game.players) {
+        const player = game.players[socketId];
         for (const suggestion of suggestions) {
-            const cacheKey = `${player.originIata}-${suggestion.iataCode}`;
-            if (originDestinationCache.has(cacheKey)) {
-                const cachedFlightInfo = originDestinationCache.get(cacheKey);
-                if (cachedFlightInfo && cachedFlightInfo.length > 0 && cachedFlightInfo[0].precio <= player.maxBudget) {
-                    // If the flight is already cached and affordable, skip the API call and check
-                    continue;
-                }
+            if (player.originIata !== suggestion.iataCode) {
+                flightChecks.push({
+                    socketId: socketId,
+                    playerOriginIata: player.originIata,
+                    playerBudget: player.maxBudget,
+                    destinationIata: suggestion.iataCode,
+                    cityName: suggestion.cityName
+                });
             }
-
-            flightChecks.push({
-                playerId: player.name, // Keep track for logging/debugging
-                playerOriginIata: player.originIata,
-                playerBudget: player.maxBudget,
-                destinationIata: suggestion.iataCode,
-                cityName: suggestion.cityName // Carry suggestion data along
-            });
         }
     }
 
-    // 2. Create an array of Promises for each flight check
-    const flightPromises = flightChecks.map(async (check) => { // Make the callback async
-        try {
-            const flightInfo: any = await obtenerVuelos(check.playerOriginIata, check.destinationIata, game.startDate, game.endDate);
+    // 2. Create and cache Promises for each unique flight check
+    console.log(`Initiating ${flightChecks.length} flight checks (some might be cached)...`);
+    const flightPromises: Promise<FlightCheckResult>[] = flightChecks.map(check => {
+        const cacheKey = `${check.socketId}-${check.destinationIata}`;
 
-            // Cache the flight info for this origin-destination pair
-            const cacheKey = `${check.playerOriginIata}-${check.destinationIata}`;
-            originDestinationCache.set(cacheKey, flightInfo);
+        if (originDestinationCache.has(cacheKey)) {
+            return originDestinationCache.get(cacheKey)!;
+        }
 
-            return {
-                ...check, // Include original check data
-                flightInfo: flightInfo, // Add the result
-                // Check if flightInfo is valid, has items, and the first flight is affordable
-                isAffordable: flightInfo && flightInfo.length > 0 && flightInfo[0].precio <= check.playerBudget,
-                error: false // No error occurred
-            };
-        } catch (error: any) {
-            // Handle any error if the promise rejects
-            console.error(`Error fetching flight for ${check.playerId} (${check.playerOriginIata} to ${check.destinationIata}):`, error);
+        const promise = (async (): Promise<FlightCheckResult> => {
+            // No try/catch around obtenerVuelos. If it throws, this promise rejects.
+            // console.log(`Calling obtenerVuelos for ${check.socketId} to ${check.destinationIata}`, { playerOriginIata: check.playerOriginIata, destinationIata: check.destinationIata, startDate: game.startDate, endDate: game.endDate });
+            const flightInfo = await obtenerVuelos(check.playerOriginIata, check.destinationIata, game.startDate, game.endDate);
 
-            // Return the error structure
+            const isAffordable = flightInfo !== null && flightInfo.length > 0 && flightInfo[0].precio <= check.playerBudget;
+
             return {
                 ...check,
-                flightInfo: null,
-                isAffordable: false,
-                error: true // Mark that an error occurred
+                flightInfo: flightInfo,
+                isAffordable: isAffordable,
+                // No 'error' field needed
             };
-        }
+        })();
+
+        originDestinationCache.set(cacheKey, promise);
+        return promise;
     });
 
-    // 3. Execute all promises in parallel
-    console.log(`Starting ${flightPromises.length} parallel flight checks...`);
-    const flightResults = await Promise.all(flightPromises);
+
+    // 3. Execute all promises in parallel. If any rejects, Promise.all rejects.
+    const allFlightResults = await Promise.all(flightPromises);
     console.log("All flight checks completed.");
 
     // 4. Determine which destinations are invalid for *any* player
     const invalidDestinationIatas = new Set<string>();
-    for (const result of flightResults) {
-        if (!result.isAffordable) {
-            // If a flight is not affordable (or errored/missing) for even one player,
-            // the destination is invalid for the group.
-            if (!invalidDestinationIatas.has(result.destinationIata)) {
-                console.log(`Marking destination ${result.destinationIata} as invalid due to player ${result.playerId}. Reason: ${result.error ? 'API Error' : (result.flightInfo && result.flightInfo.length > 0 ? `Unaffordable (Price: ${result.flightInfo[0].precio}, Budget: ${result.playerBudget})` : 'No flight info')}`);
-                invalidDestinationIatas.add(result.destinationIata);
-            }
+    const resultsByDestination = new Map<string, FlightCheckResult[]>();
+
+    allFlightResults.forEach(result => {
+        if (!resultsByDestination.has(result.destinationIata)) {
+            resultsByDestination.set(result.destinationIata, []);
+        }
+        resultsByDestination.get(result.destinationIata)!.push(result);
+    });
+
+    for (const [destinationIata, results] of resultsByDestination.entries()) {
+        // A destination is invalid if *any* player's check resulted in isAffordable being false
+        const isInvalid = results.some(r => !r.isAffordable);
+        if (isInvalid) {
+            invalidDestinationIatas.add(destinationIata);
+            const firstInvalidResult = results.find(r => !r.isAffordable)!;
+            const reason = (firstInvalidResult.flightInfo && firstInvalidResult.flightInfo.length > 0)
+                ? `Unaffordable (Price: ${firstInvalidResult.flightInfo[0].precio}, Budget: ${firstInvalidResult.playerBudget})`
+                : 'No flight info/empty result';
+            console.log(`Marking destination ${destinationIata} (${firstInvalidResult.cityName}) as invalid due to player ${firstInvalidResult.socketId}. Reason: ${reason}`);
         }
     }
 
@@ -266,40 +423,51 @@ const filterMatchedCriterias = async (game: Game, suggestions: { cityName: strin
         !invalidDestinationIatas.has(suggestion.iataCode)
     );
 
+    // 6. Filter the flight results to only include those for the final valid destinations
+    const validFlightResults = allFlightResults.filter(result =>
+        finalDestinations.some(fd => fd.iataCode === result.destinationIata)
+    );
+
+
     console.log(`Initial suggestions: ${suggestions.length}, Final valid destinations: ${finalDestinations.length}`);
-    return finalDestinations;
+    return { finalDestinations, validFlightResults };
 }
 
-interface DestinationData {
-    destinationName: string,
-    destinationNameNoEmoji: string,
-    goodReasons: string[],
-    badReasons: string[],
-    features: string[],
-    countryIsoCode: string,
-    bestSeason: string
-    imageUrl: string | undefined
-};
 
-const generateFinalData = async (sharedPrompt: string, destinations: { cityName: string, iataCode: string }[]): Promise<DestinationData[]> => {
-    const result = await genAI.models.generateContent({
-        model: "gemini-2.0-flash",
-        contents: `
+/**
+ * Generates detailed data for a list of destinations using Gemini. Errors will propagate.
+ * @param sharedPrompt The base prompt with aggregated answers.
+ * @param destinations List of destinations {cityName, iataCode} to get details for.
+ * @returns Promise resolving to an array of DestinationData.
+ */
+const generateFinalData = async (sharedPrompt: string, destinations: InitialDestinationSuggestion[]): Promise<DestinationData[]> => {
+
+    if (destinations.length === 0) {
+        console.log("generateFinalData called with empty destinations list.");
+        return []; // Return empty if no destinations provided
+    }
+
+    const finalPrompt = `
 ${sharedPrompt}
 
-We have a list of ${destinations.length} city names, and their corresponding IATA codes so you can reference proximity, available travel destinations.
+We have filtered the list down to ${destinations.length} potential city destinations that fit the criteria (like budget).
 
-The destinations are: ${destinations.map(d => `${d.cityName} (${d.iataCode})`).join(", ")}.
+The valid destinations are: ${destinations.map(d => `${d.cityName} (${d.iataCode})`).join(", ")}.
 
-Now, for each city destination, return the following:
+Now, for each of these valid city destinations, provide detailed information in the following JSON format. Ensure the 'iataCode' matches the input for each city:
 - destinationName: The name of the destination (city name). Add the emoji flag of the country at the start of the name if available.
 - destinationNameNoEmoji: The name of the destination (city name) without the emoji flag.
-- goodReasons: A short list of 5 elements about why this destination is a good fit for the group. Make sure to include the most relevant features based on the aggregated answers.
-- badReasons: A short list of 5 elements about why this destination might not be the best choice (e.g: anti lgbt laws, robbery, political situation, recent conflicts, difficult visa requirements, etc). Take into account, if needed, the answers of the different questions.
-- features: A list of features that make this destination appealing (e.g: beach, mountains, historical sites, local cuisine, shopping, etc). Include an emoji in  the start of each feature. Highlight the unique or defining features of each destination compared to the others on the list.
-- countryIsoCode: The ISO code of the country where the destination is located (e.g., "FR" for France)
-- bestSeason: The best season to visit this destination (e.g., "Summer", "Winter", "Spring", "Autumn"). This is a single word.
-        `,
+- iataCode: The IATA code of the city's main airport (must match the input list).
+- goodReasons: A short list of 5 elements about why this destination is a good fit for the group based on the shared preferences.
+- badReasons: A short list of up to 5 potential drawbacks (e.g., safety concerns, visa issues, political climate, mismatch with preferences). Be objective.
+- features: A list of 5-7 key features/attractions (e.g., 🏖️ Beach, 🏛️ Historical Sites, 🍜 Local Cuisine). Start each with a relevant emoji. Highlight unique aspects.
+- countryIsoCode: The ISO 3166-1 alpha-2 code of the country (e.g., "ES" for Spain).
+- bestSeason: The generally recommended best season to visit (e.g., "Summer", "Autumn", "Spring", "Winter", or "Year-round"). Single word or hyphenated.
+`;
+
+    const result = await genAI.models.generateContent({
+        model: "gemini-1.5-flash", // Or your preferred model
+        contents: finalPrompt,
         config: {
             responseMimeType: "application/json",
             responseSchema: {
@@ -309,16 +477,36 @@ Now, for each city destination, return the following:
                     properties: {
                         destinationName: { type: Type.STRING },
                         destinationNameNoEmoji: { type: Type.STRING },
+                        iataCode: { type: Type.STRING }, // Ensure IATA code is required in the response
                         goodReasons: { type: Type.ARRAY, items: { type: Type.STRING } },
                         badReasons: { type: Type.ARRAY, items: { type: Type.STRING } },
                         features: { type: Type.ARRAY, items: { type: Type.STRING } },
                         countryIsoCode: { type: Type.STRING },
                         bestSeason: { type: Type.STRING },
                     },
-                    required: ["destinationName", "destinationNameNoEmoji", "goodReasons", "badReasons", "features", "countryIsoCode", "bestSeason"],
+                    required: ["destinationName", "destinationNameNoEmoji", "iataCode", "goodReasons", "badReasons", "features", "countryIsoCode", "bestSeason"],
                 }
-            },
+            }
         }
+
     });
-    return JSON.parse(result.text!) as DestinationData[];
+
+    const responseText = result.text!;
+    if (!responseText) {
+        throw new Error("Gemini API returned an empty response for final destination details.");
+    }
+    // If JSON.parse fails, it will throw, halting execution.
+    const finalData = JSON.parse(responseText) as DestinationData[];
+
+    // Optional validation: Check if the returned data matches the requested IATA codes
+    const returnedIatas = new Set(finalData.map(d => d.iataCode));
+    const requestedIatas = new Set(destinations.map(d => d.iataCode));
+    if (returnedIatas.size !== requestedIatas.size || !destinations.every(d => returnedIatas.has(d.iataCode))) {
+        console.warn("Mismatch between requested IATA codes and Gemini response IATA codes in final data.");
+        // Decide how to handle: proceed with potentially incomplete/incorrect data, or throw an error?
+        // For now, just log a warning.
+    }
+
+
+    return finalData;
 }
