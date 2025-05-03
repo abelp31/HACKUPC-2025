@@ -1,7 +1,8 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { io } from "./main";
 import { Game } from "./types";
 import { LIMITED_COUNTRIES } from "./countries";
+import { LIMITED_CITIES } from "./cities";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 if (!GEMINI_API_KEY) {
@@ -13,6 +14,12 @@ if (!GEMINI_API_KEY) {
 const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 console.log("Google AI SDK initialized.");
 
+interface Destination {
+    destinationName: string;
+    reasoning: string;
+    features: string[];
+    countryIsoCode: string;
+}
 
 /**
  * Processes the results of a finished game, aggregates answers,
@@ -22,7 +29,7 @@ console.log("Google AI SDK initialized.");
 export async function processGameResults(game: Game) {
     console.log(`Processing results for finished game: ${game.id}`);
     const playerCount = Object.keys(game.players).length;
-    let suggestions = []; // Default empty suggestions
+    let suggestions: any[] = []; // Default empty suggestions
     let aggregatedResults: { [questionId: number]: { questionText: string, options: { [optionId: number]: { optionText: string, count: number } } } } = {};
     let errorProcessing = null; // Store potential processing errors
 
@@ -84,7 +91,15 @@ ${formattedAnswers}
 You can only return countries within Europe and in the following list:
 ${LIMITED_COUNTRIES.join(", ")}
 
-Based *only* on these preferences, suggest a list of 5 specific travel destinations (city or specific region/park). For each destination, briefly explain why it matches the group's preferences according to the answers provided. Return the suggestions *only* as a valid JSON array, where each object has 'destination' (string) and 'reasoning' (string) properties. Do not include any other text, markdown formatting (like \`\`\`json), or explanations outside the JSON structure. Example format: [{"destination": "City, Country", "reasoning": "Explanation..."}, ...]
+And cities within the following list:
+${LIMITED_CITIES.join(", ")}
+
+Based *only* on these preferences, suggest a list of 5 specific travel destinations (city or specific region/park).
+For each destination, return the following:
+- destinationName: The name of the destination (city or region)
+- reasoning: A short explanation of why this destination is a good fit for the group
+- features: A list of features that make this destination appealing (e.g., "beach", "mountains", "historical sites"). Include an emoji in  the start of each feature.
+- countryIsoCode: The ISO code of the country where the destination is located (e.g., "FR" for France)
 `;
 
         console.log(`--- Generated Prompt for Game ${game.id} ---`);
@@ -94,35 +109,36 @@ Based *only* on these preferences, suggest a list of 5 specific travel destinati
         // 4. Call Gemini API (Assume 'model' is initialized)
         try {
             console.log(`Sending prompt to Gemini for game ${game.id}...`);
-            // REMOVED safetySettings constant declaration
 
             // Call generateContent without safetySettings
             const result = await genAI.models.generateContent({
                 model: "gemini-2.0-flash",
                 contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                destinationName: { type: Type.STRING },
+                                reasoning: { type: Type.STRING },
+                                features: { type: Type.ARRAY, items: { type: Type.STRING } },
+                                countryIsoCode: { type: Type.STRING },
+                            },
+                            required: ["destinationName", "reasoning", "features", "countryIsoCode"],
+                        }
+                    },
+                }
             });
-            const text = result.text!;
+            suggestions = JSON.parse(result.text!) as Destination[];
 
             console.log(`--- Gemini Response Raw Text for Game ${game.id} ---`);
-            console.log(text);
+            console.log(suggestions);
             console.log(`-------------------------------------------------`);
 
             // Attempt to parse the JSON response
-            try {
-                const cleanedText = text.replace(/^```json\s*/, '').replace(/```$/, '').trim();
-                suggestions = JSON.parse(cleanedText);
-                if (!Array.isArray(suggestions) || !suggestions.every(item => item && typeof item.destination === 'string' && typeof item.reasoning === 'string')) {
-                    console.error("Gemini response was not a valid JSON array with the expected structure.");
-                    suggestions = [];
-                    errorProcessing = "AI response format was invalid.";
-                } else {
-                    console.log("Successfully parsed suggestions from Gemini.");
-                }
-            } catch (parseError) {
-                console.error("Failed to parse Gemini response as JSON:", parseError);
-                suggestions = [];
-                errorProcessing = "Could not parse AI suggestions.";
-            }
+
 
         } catch (apiError) {
             console.error(`Error calling Gemini API for game ${game.id}:`, apiError);
@@ -139,7 +155,7 @@ Based *only* on these preferences, suggest a list of 5 specific travel destinati
     const finalPayload: any = {
         players: game.players,
         aggregatedResults: aggregatedResults,
-        suggestions: suggestions
+        suggestions: suggestions as any[], // Cast to any[] to avoid TypeScript errors
     };
     if (errorProcessing) {
         finalPayload.error = errorProcessing; // Include error message if any occurred
