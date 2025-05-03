@@ -92,14 +92,11 @@ For each destination, return the following:
 `;
 
         console.log(`--- Generated Prompt for Game ${game.id} ---`);
-        // console.log(prompt); // Keep commented out unless debugging prompts
         console.log(`-----------------------------------------`);
 
-        // 4. Call Gemini API (Assume 'model' is initialized)
         try {
             console.log(`Sending prompt to Gemini for game ${game.id}...`);
 
-            // Call generateContent without safetySettings
             const result = await genAI.models.generateContent({
                 model: "gemini-2.0-flash",
                 contents: prompt,
@@ -124,10 +121,8 @@ For each destination, return the following:
             console.log(suggestions);
             console.log(`-------------------------------------------------`);
             /* TODO: iataOrigen, iataDesti, preuMaxim, dataInici, dataFinal */
-            const finalDestinationsThatMatchCriteria = ["LHR", "CDG", "AMS", "FRA", "MAD", "BCN", "FCO"];
-            console.log(`Final destinations that match criteria: ${finalDestinationsThatMatchCriteria}`);
 
-            const data = await generateFinalData(sharedPrompt, [{ cityName: "Barcelona", iataCode: "BCN" }]);
+            const data = await generateFinalData(sharedPrompt, suggestions);
             console.log("FINAL DATA: ", data);
 
         } catch (apiError) {
