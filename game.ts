@@ -279,7 +279,7 @@ For each destination, return the following JSON format:
                         },
                     };
                     isAffordableForPlayer = playerSpecificFlightResult.isAffordable;
-                    console.log(`Flight info found for player ${socketId} to ${validDest.iataCode}:`, playerFlightInfo);
+                    // console.log(`Flight info found for player ${socketId} to ${validDest.iataCode}:`, playerFlightInfo);
                 } else {
                     // Flight info was null or empty (no flights found by API)
                     playerFlightInfo = null;
