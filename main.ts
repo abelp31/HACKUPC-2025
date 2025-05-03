@@ -9,7 +9,7 @@ import cors from 'cors';
 import path from 'path';
 import lookupRouter from './lookup';
 import { processGameResults } from './game';
-import { getNearestAirports } from './skyscanner';
+import { getNearestAirportEntityId } from './skyscanner';
 
 interface CustomSocket extends Socket {
     gameId?: string;
@@ -159,7 +159,7 @@ io.on('connection', (socket: CustomSocket) => {
 
 
         // Extract nearest airport ID from coordinates
-        const entityIdOrigin = await getNearestAirports(coords.lat, coords.lng)
+        const entityIdOrigin = await getNearestAirportEntityId(coords.lat, coords.lng)
 
         // Successful Join...
         console.log(`[joinGame] Success: ${socket.id} | Player: ${playerName} | Game: ${gameId} | entityIdOrigin: ${entityIdOrigin}`);

@@ -4,8 +4,7 @@ import { Player } from "./types";
 const API_KEY = "sh967490139224896692439644109194";
 
 
-
-export const getNearestAirports = async (lat: number, lng: number): Promise<string> => {
+export const getNearestAirportEntityId = async (lat: number, lng: number): Promise<string> => {
     const response = await fetch(`https://partners.api.skyscanner.net/apiservices/v3/geo/hierarchy/flights/nearest`, {
         method: 'POST',
         headers: {

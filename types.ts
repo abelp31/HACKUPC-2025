@@ -24,7 +24,7 @@ export interface Player {
     name: string;
     entityIdOrigin: string;
     maxBudget: number;
-    answers: PlayerAnswer[]; // Array of answers submitted by the player
+    answers: PlayerAnswer[];
 }
 
 // Represents the overall game state
