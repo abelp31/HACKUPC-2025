@@ -103,60 +103,60 @@ interface IndicativeSearchParam {
 //     return finalDestinations;
 // };
 
-export const getIndicativeSearch = async (legs: IndicativeSearchParam[], month: number) => {
-    const finalLegs = legs.map(leg => {
-        const { originIsoCode, destinationIsoCode } = leg;
-        return {
-            originData: searchCountryByISO(originIsoCode),
-            destinationData: searchCountryByISO(destinationIsoCode)
-        };
-    });
+// export const getIndicativeSearch = async (legs: IndicativeSearchParam[], month: number) => {
+//     const finalLegs = legs.map(leg => {
+//         const { originIsoCode, destinationIsoCode } = leg;
+//         return {
+//             originData: searchCountryByISO(originIsoCode),
+//             destinationData: searchCountryByISO(destinationIsoCode)
+//         };
+//     });
 
-    const params = finalLegs.filter(leg => leg.originData && leg.destinationData).map(leg => {
-        const [originInternalCode, destinationInternalCode] = [leg.originData!.entityId, leg.destinationData!.entityId];
-        return {
-            originPlace: {
-                queryPlace: {
-                    entityId: originInternalCode.toString()
-                }
-            },
-            destinationPlace: {
-                queryPlace: {
-                    entityId: destinationInternalCode.toString()
-                }
-            },
-            "date_range": {
-                startDate: {
-                    year: new Date().getFullYear(),
-                    month: month
-                },
-                endDate: {
-                    year: new Date().getFullYear(),
-                    month: month + 1
-                }
-            }
-        }
-    });
+//     const params = finalLegs.filter(leg => leg.originData && leg.destinationData).map(leg => {
+//         const [originInternalCode, destinationInternalCode] = [leg.originData!.entityId, leg.destinationData!.entityId];
+//         return {
+//             originPlace: {
+//                 queryPlace: {
+//                     entityId: originInternalCode.toString()
+//                 }
+//             },
+//             destinationPlace: {
+//                 queryPlace: {
+//                     entityId: destinationInternalCode.toString()
+//                 }
+//             },
+//             "date_range": {
+//                 startDate: {
+//                     year: new Date().getFullYear(),
+//                     month: month
+//                 },
+//                 endDate: {
+//                     year: new Date().getFullYear(),
+//                     month: month + 1
+//                 }
+//             }
+//         }
+//     });
 
-    const response = await fetch('https://partners.api.skyscanner.net/apiservices/v3/flights/indicative/search', {
-        method: 'POST',
-        headers: {
-            "x-api-key": API_KEY,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            "query": {
-                "currency": "EUR",
-                "locale": "es-ES",
-                "market": "ES",
-                "dateTimeGroupingType": "DATE_TIME_GROUPING_TYPE_BY_MONTH",
-                "queryLegs": params
-            }
-        })
-    });
-    if (!response.ok) {
-        throw new Error(`Error: ${response.status} ${response.statusText}: ${await response.text()}`);
-    }
-    const data = await response.json();
-    return data;
-};
+//     const response = await fetch('https://partners.api.skyscanner.net/apiservices/v3/flights/indicative/search', {
+//         method: 'POST',
+//         headers: {
+//             "x-api-key": API_KEY,
+//             'Content-Type': 'application/json'
+//         },
+//         body: JSON.stringify({
+//             "query": {
+//                 "currency": "EUR",
+//                 "locale": "es-ES",
+//                 "market": "ES",
+//                 "dateTimeGroupingType": "DATE_TIME_GROUPING_TYPE_BY_MONTH",
+//                 "queryLegs": params
+//             }
+//         })
+//     });
+//     if (!response.ok) {
+//         throw new Error(`Error: ${response.status} ${response.statusText}: ${await response.text()}`);
+//     }
+//     const data = await response.json();
+//     return data;
+// };

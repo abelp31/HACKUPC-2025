@@ -32,7 +32,8 @@ export interface Game {
     id: string; // Unique game ID (e.g., "ABC123")
     questions: Question[]; // Array of questions for the game (loaded from JSON)
     currentQuestionIndex: number; // Index of the question currently being asked
-    month: number;
+    startDate: string;
+    endDate: string,
     state: 'waiting' | 'playing' | 'finished'; // Current phase of the game
     players: {
         [socketId: string]: Player; // Map socket IDs to player data

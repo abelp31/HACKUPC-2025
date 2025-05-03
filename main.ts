@@ -16,7 +16,6 @@ interface CustomSocket extends Socket {
     playerName?: string;
 }
 
-
 // --- Server Setup ---
 
 const app = express();
@@ -51,22 +50,18 @@ const generateGameId = (): string => {
 
 // POST /game/create
 app.post("/game/create", (req: Request, res: Response) => {
-    console.log(1)
     const gameId = generateGameId();
-    console.log(2)
     const newGame: Game = {
         id: gameId,
         questions: predefinedQuestions,
         currentQuestionIndex: 0,
         state: 'waiting',
         players: {},
-        month: req.body.month
+        startDate: req.body.startDate,
+        endDate: req.body.endDate
     };
-    console.log(3)
     games.set(gameId, newGame);
-    console.log(4)
     console.log(`Game created with ID: ${gameId}`);
-    console.log(5)
     res.status(201).json({ gameId: newGame.id });
 });
 
@@ -128,17 +123,6 @@ const sendQuestions = (gameId: string) => {
 
     game.currentQuestionIndex++;
 };
-
-// --- Test Game Setup ---
-games.set("TESTGM", {
-    id: "TESTGM",
-    questions: predefinedQuestions,
-    currentQuestionIndex: 0,
-    state: 'waiting',
-    players: {},
-    month: 7
-});
-console.log("Test game 'TESTGM' created using predefined questions.");
 
 // --- Socket.IO Connection Logic ---
 

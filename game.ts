@@ -12,13 +12,6 @@ if (!GEMINI_API_KEY) {
 const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 console.log("Google AI SDK initialized.");
 
-interface Destination {
-    destinationName: string;
-    reasoning: string;
-    features: string[];
-    countryIsoCode: string;
-}
-
 /**
  * Processes the results of a finished game, aggregates answers,
  * constructs a prompt for Gemini, and calls the API.
@@ -92,10 +85,10 @@ ${formattedAnswers}
         const prompt = `
 ${sharedPrompt}
 
-Based *only* on these preferences, suggest a list of 15 travel destinations (countries only!!!).
+Based *only* on these preferences, suggest a list of 15 travel destinations (cities only, no countries).
 For each destination, return the following:
-- iso country code (ISO 3166-1 alpha-2)
-- country name
+- cityName: The name of the city (e.g., "Barcelona")
+- iataCode: The IATA code of the most important airport near the city (e.g., "BCN")
 `;
 
         console.log(`--- Generated Prompt for Game ${game.id} ---`);
@@ -117,26 +110,25 @@ For each destination, return the following:
                         items: {
                             type: Type.OBJECT,
                             properties: {
-                                isoCountry: { type: Type.STRING },
-                                countryName: { type: Type.STRING },
+                                cityName: { type: Type.STRING },
+                                iataCode: { type: Type.STRING },
                             },
-                            required: ["isoCountry", "countryName"],
+                            required: ["cityName", "iataCode"],
                         }
                     },
                 }
             });
-            suggestions = JSON.parse(result.text!) as Destination[];
+            const suggestions = JSON.parse(result.text!) as { cityName: string, iataCode: string }[];
 
             console.log(`--- Gemini Response Raw Text for Game ${game.id} ---`);
             console.log(suggestions);
             console.log(`-------------------------------------------------`);
-
-
-            // const finalDestinationsThatMatchCriteria = await filterWithConstraints(Object.values(game.players), suggestions.map(dest => dest.isoCountry), game.month);
-            const finalDestinationsThatMatchCriteria = suggestions.map(dest => dest.isoCountry);
+            /* TODO: iataOrigen, iataDesti, preuMaxim, dataInici, dataFinal */
+            const finalDestinationsThatMatchCriteria = ["LHR", "CDG", "AMS", "FRA", "MAD", "BCN", "FCO"];
             console.log(`Final destinations that match criteria: ${finalDestinationsThatMatchCriteria}`);
 
-            const data = await generateFinalData(sharedPrompt, finalDestinationsThatMatchCriteria);
+            const data = await generateFinalData(sharedPrompt, [{ cityName: "Barcelona", iataCode: "BCN" }]);
+            console.log("FINAL DATA: ", data);
 
         } catch (apiError) {
             console.error(`Error calling Gemini API for game ${game.id}:`, apiError);
@@ -165,16 +157,18 @@ For each destination, return the following:
     // console.log(`Game ${game.id} removed from memory.`);
 }
 
-const generateFinalData = async (sharedPrompt: string, destinations: string[]) => {
+const generateFinalData = async (sharedPrompt: string, destinations: { cityName: string, iataCode: string }[]) => {
     const result = await genAI.models.generateContent({
         model: "gemini-2.0-flash",
         contents: `
 ${sharedPrompt}
 
-We have a list of ${destinations.length} isoCodes of available travel destinations.
+We have a list of ${destinations.length} city names, and their corresponding IATA codes so you can reference proximity, available travel destinations.
 
-For each destination, return the following:
-- destinationName: The name of the destination (country). Add the emoji flag of the country at the start of the name if available.
+The destinations are: ${destinations.map(d => `${d.cityName} (${d.iataCode})`).join(", ")}.
+
+Now, for each city destination, return the following:
+- destinationName: The name of the destination (city name). Add the emoji flag of the country at the start of the name if available.
 - reasoning: A short explanation of why this destination is a good fit for the group. Make sure to include the most relevant features based on the aggregated answers.
 - features: A list of features that make this destination appealing (e.g., "beach", "mountains", "historical sites"). Include an emoji in  the start of each feature. Make sure to be distinctive and not repeat the same features for different destinations.
 - countryIsoCode: The ISO code of the country where the destination is located (e.g., "FR" for France)
