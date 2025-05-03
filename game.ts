@@ -188,11 +188,21 @@ const fillImages = async (destinations: DestinationData[]): Promise<DestinationD
  * @returns {Promise<DestinationSuggestion[]>} A promise that resolves with the filtered list of destinations.
  */
 const filterMatchedCriterias = async (game: Game, suggestions: { cityName: string, iataCode: string }[]) => {
+    const originDestinationCache = new Map<string, { precio: number; escala: number }[]>();
 
     // 1. Create a list of all flight checks needed (Player x Suggestion)
     const flightChecks = [];
     for (const player of Object.values(game.players)) {
         for (const suggestion of suggestions) {
+            const cacheKey = `${player.originIata}-${suggestion.iataCode}`;
+            if (originDestinationCache.has(cacheKey)) {
+                const cachedFlightInfo = originDestinationCache.get(cacheKey);
+                if (cachedFlightInfo && cachedFlightInfo.length > 0 && cachedFlightInfo[0].precio <= player.maxBudget) {
+                    // If the flight is already cached and affordable, skip the API call and check
+                    continue;
+                }
+            }
+
             flightChecks.push({
                 playerId: player.name, // Keep track for logging/debugging
                 playerOriginIata: player.originIata,
@@ -204,24 +214,33 @@ const filterMatchedCriterias = async (game: Game, suggestions: { cityName: strin
     }
 
     // 2. Create an array of Promises for each flight check
-    const flightPromises = flightChecks.map(check => {
-        return obtenerVuelos(check.playerOriginIata, check.destinationIata, game.startDate, game.endDate)
-            .then((flightInfo: any) => ({
+    const flightPromises = flightChecks.map(async (check) => { // Make the callback async
+        try {
+            const flightInfo: any = await obtenerVuelos(check.playerOriginIata, check.destinationIata, game.startDate, game.endDate);
+
+            // Cache the flight info for this origin-destination pair
+            const cacheKey = `${check.playerOriginIata}-${check.destinationIata}`;
+            originDestinationCache.set(cacheKey, flightInfo);
+
+            return {
                 ...check, // Include original check data
                 flightInfo: flightInfo, // Add the result
+                // Check if flightInfo is valid, has items, and the first flight is affordable
                 isAffordable: flightInfo && flightInfo.length > 0 && flightInfo[0].precio <= check.playerBudget,
-                error: false
-            }))
-            .catch((error: any) => {
-                console.error(`Error fetching flight for ${check.playerId} (${check.playerOriginIata} to ${check.destinationIata}):`, error);
-                // Treat errors as if the flight is not available/affordable
-                return {
-                    ...check,
-                    flightInfo: null,
-                    isAffordable: false,
-                    error: true // Mark that an error occurred
-                };
-            });
+                error: false // No error occurred
+            };
+        } catch (error: any) {
+            // Handle any error if the promise rejects
+            console.error(`Error fetching flight for ${check.playerId} (${check.playerOriginIata} to ${check.destinationIata}):`, error);
+
+            // Return the error structure
+            return {
+                ...check,
+                flightInfo: null,
+                isAffordable: false,
+                error: true // Mark that an error occurred
+            };
+        }
     });
 
     // 3. Execute all promises in parallel
