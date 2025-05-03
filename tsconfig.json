@@ -1,0 +1,15 @@
+{
+    "compilerOptions": {
+      "module": "CommonJS",
+      "esModuleInterop": true, // Allows 'import' syntax for CJS modules
+      "moduleResolution": "Node", // Or "Node10"
+      "target": "ES2016", // Or higher
+      "outDir": "./dist",
+      "rootDir": "./", // Adjust if your main.ts is not in src
+      "strict": true,
+      "skipLibCheck": true,
+      "forceConsistentCasingInFileNames": true
+      // ... other options
+    }
+    // Make sure 'include' points to your TS files, e.g., "include": ["src/**/*"] or ["*.ts"]
+  }

@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Socket.IO Game Test Client</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.5; padding: 15px; max-width: 800px; margin: auto; }
+        #gameArea, #joinArea, #questionArea, #resultsArea { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
+        #messages li { border-bottom: 1px dotted #eee; padding: 3px 0; font-size: 0.9em; }
+        #messages li:first-child { font-weight: bold; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], button { padding: 8px; margin-bottom: 10px; border-radius: 3px; border: 1px solid #ccc; }
+        button { cursor: pointer; background-color: #e0e0e0; }
+        button:hover { background-color: #d0d0d0; }
+        button:disabled { cursor: not-allowed; background-color: #f0f0f0; color: #aaa; }
+        #options label { font-weight: normal; margin-left: 5px;}
+        #options div { margin-bottom: 5px; }
+        #resultsArea h3, #resultsArea h4 { margin-top: 15px; margin-bottom: 5px; }
+        #aggregatedResults ul, #suggestions ul { list-style: none; padding-left: 0; }
+        #aggregatedResults li, #suggestions li { margin-bottom: 8px; padding: 5px; background-color: #f9f9f9; border-radius: 3px; }
+        #aggregatedResults ul ul { list-style: disc; padding-left: 20px; margin-top: 5px; }
+        #aggregatedResults ul ul li { background-color: transparent; padding: 2px; }
+        #errorDisplay { color: red; font-weight: bold; margin-top: 10px;}
+        .hidden { display: none; }
+    </style>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" integrity="sha384-2huaZvOR9iDzHqslqwpR87isEmrfxqyWOF7hr7BY6KG0+hVKLoEXMPUJw3ynWuhO" crossorigin="anonymous"></script>
+</head>
+<body>
+
+    <h1>Travel Destination Game - Test Client</h1>
+
+    <div id="joinArea">
+        <h2>Join or Create Game</h2>
+        <div>
+            <label for="playerName">Your Name:</label>
+            <input type="text" id="playerName" value="TestPlayer">
+        </div>
+        <div>
+            <label for="gameIdInput">Game ID (Leave blank to create):</label>
+            <input type="text" id="gameIdInput" value="TESTGM">
+        </div>
+        <button id="createGameBtn">Create Game</button>
+        <button id="joinGameBtn">Join Game</button>
+    </div>
+
+    <div id="gameArea" class="hidden">
+        <h2>Game Room: <span id="gameIdDisplay"></span></h2>
+        <p>Your Name: <span id="yourNameDisplay"></span></p>
+        <p>Game State: <span id="gameState">Waiting</span></p>
+        <button id="startGameBtn" disabled>Start Game</button> <h3>Players:</h3>
+        <ul id="playerList"></ul>
+
+        <div id="questionArea" class="hidden">
+            <h3 id="questionText"></h3>
+            <form id="answerForm">
+                <div id="options"></div>
+                <button type="submit" id="submitAnswerBtn">Submit Answer</button>
+            </form>
+             <p><em id="answerFeedback"></em></p>
+        </div>
+
+        <div id="resultsArea" class="hidden">
+            <h2>Game Finished! Results:</h2>
+            <div id="errorDisplay"></div> <div id="aggregatedResults">
+                <h4>Aggregated Votes:</h4>
+                <ul></ul>
+            </div>
+            <div id="suggestions">
+                <h4>AI Suggestions:</h4>
+                <ul></ul>
+            </div>
+             <div id="rawSuggestions" style="margin-top: 15px; font-size: 0.8em; color: #555;">
+                <h4>Raw AI Response (if parsing failed):</h4>
+                <pre style="white-space: pre-wrap; word-wrap: break-word; background-color: #eee; padding: 5px; border-radius: 3px;"></pre>
+            </div>
+        </div>
+    </div>
+
+    <div>
+        <h2>Messages & Logs</h2>
+        <ul id="messages"></ul>
+    </div>
+
+    <script>
+        // Ensure the server URL is correct
+        const SERVER_URL = "https://38bc-147-83-201-132.ngrok-free.app";
+        let socket = null;
+        let currentGameId = null;
+        let currentPlayerName = null;
+        let currentQuestion = null; // Store the current question object
+
+        // DOM Elements
+        const joinArea = document.getElementById('joinArea');
+        const gameArea = document.getElementById('gameArea');
+        const playerNameInput = document.getElementById('playerName');
+        const gameIdInput = document.getElementById('gameIdInput');
+        const createGameBtn = document.getElementById('createGameBtn');
+        const joinGameBtn = document.getElementById('joinGameBtn');
+        const startGameBtn = document.getElementById('startGameBtn');
+        const gameIdDisplay = document.getElementById('gameIdDisplay');
+        const yourNameDisplay = document.getElementById('yourNameDisplay');
+        const gameState = document.getElementById('gameState');
+        const playerList = document.getElementById('playerList');
+        const questionArea = document.getElementById('questionArea');
+        const questionText = document.getElementById('questionText');
+        const optionsDiv = document.getElementById('options');
+        const answerForm = document.getElementById('answerForm');
+        const submitAnswerBtn = document.getElementById('submitAnswerBtn');
+        const answerFeedback = document.getElementById('answerFeedback');
+        const messages = document.getElementById('messages');
+        const resultsArea = document.getElementById('resultsArea');
+        const aggregatedResultsDiv = document.getElementById('aggregatedResults').querySelector('ul');
+        const suggestionsDiv = document.getElementById('suggestions').querySelector('ul');
+        const errorDisplay = document.getElementById('errorDisplay');
+        const rawSuggestionsPre = document.getElementById('rawSuggestions').querySelector('pre');
+        const rawSuggestionsContainer = document.getElementById('rawSuggestions');
+
+
+        // --- Helper Functions ---
+        function logMessage(message) {
+            const li = document.createElement('li');
+            li.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            messages.prepend(li); // Add new messages to the top
+        }
+
+        function updatePlayerList(playersData) {
+            playerList.innerHTML = ''; // Clear current list
+            if (!playersData) return;
+            for (const socketId in playersData) {
+                const player = playersData[socketId];
+                const li = document.createElement('li');
+                // Indicate current player and number of answers submitted
+                li.textContent = `${player.name} ${socketId === socket?.id ? '(You)' : ''} (${player.answers?.length || 0} answers)`;
+                playerList.appendChild(li);
+            }
+        }
+
+        function displayQuestion(questionData) {
+            currentQuestion = questionData; // Store current question details
+            resultsArea.classList.add('hidden'); // Hide results when new question comes
+            questionArea.classList.remove('hidden');
+            questionText.textContent = `Q${questionData.index + 1}: ${questionData.text}`;
+            optionsDiv.innerHTML = ''; // Clear previous options
+            answerFeedback.textContent = ''; // Clear previous feedback
+            submitAnswerBtn.disabled = false; // Enable submit button
+
+            questionData.options.forEach(option => {
+                const div = document.createElement('div');
+                const inputType = questionData.allowMultiple ? 'checkbox' : 'radio';
+                const input = document.createElement('input');
+                input.type = inputType;
+                input.id = `option-${option.id}`;
+                input.name = questionData.allowMultiple ? `option-${option.id}` : 'questionOption'; // Use same name for radio buttons
+                input.value = option.id;
+
+                const label = document.createElement('label');
+                label.htmlFor = `option-${option.id}`;
+                label.textContent = option.text;
+
+                div.appendChild(input);
+                div.appendChild(label);
+                optionsDiv.appendChild(div);
+            });
+        }
+
+        // --- NEW: Function to display final results ---
+        function displayResults(data) {
+            resultsArea.classList.remove('hidden');
+            aggregatedResultsDiv.innerHTML = ''; // Clear previous results
+            suggestionsDiv.innerHTML = ''; // Clear previous suggestions
+            errorDisplay.textContent = ''; // Clear previous errors
+            rawSuggestionsPre.textContent = ''; // Clear raw suggestions
+            rawSuggestionsContainer.classList.add('hidden'); // Hide raw suggestions container
+
+            // Display error if present
+            if (data.error) {
+                errorDisplay.textContent = `Error processing results: ${data.error}`;
+            }
+             if (data.message) { // Display messages like "no players"
+                const msgLi = document.createElement('li');
+                msgLi.textContent = data.message;
+                aggregatedResultsDiv.appendChild(msgLi);
+            }
+
+            // Display Aggregated Results
+            if (data.aggregatedResults && Object.keys(data.aggregatedResults).length > 0) {
+                for (const qId in data.aggregatedResults) {
+                    const questionResult = data.aggregatedResults[qId];
+                    const qLi = document.createElement('li');
+                    qLi.innerHTML = `<strong>${questionResult.questionText}</strong>`;
+                    const optUl = document.createElement('ul');
+                    let hasVotes = false;
+                    for (const optId in questionResult.options) {
+                        const optionResult = questionResult.options[optId];
+                        if(optionResult.count > 0) {
+                            const optLi = document.createElement('li');
+                            optLi.textContent = `"${optionResult.optionText}": ${optionResult.count} vote(s)`;
+                            optUl.appendChild(optLi);
+                            hasVotes = true;
+                        }
+                    }
+                     if (!hasVotes) {
+                        const noVotesLi = document.createElement('li');
+                        noVotesLi.textContent = "(No votes)";
+                        noVotesLi.style.fontStyle = 'italic';
+                        optUl.appendChild(noVotesLi);
+                    }
+                    qLi.appendChild(optUl);
+                    aggregatedResultsDiv.appendChild(qLi);
+                }
+            } else if (!data.message && !data.error) { // Only show if no other message/error
+                 const noResultsLi = document.createElement('li');
+                 noResultsLi.textContent = "No aggregated results available.";
+                 aggregatedResultsDiv.appendChild(noResultsLi);
+            }
+
+
+            // Display AI Suggestions
+            if (data.suggestions && data.suggestions.length > 0) {
+                data.suggestions.forEach(suggestion => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `<strong>${suggestion.destination || 'N/A'}</strong>: ${suggestion.reasoning || 'No reasoning provided.'}`;
+                    suggestionsDiv.appendChild(li);
+                });
+            } else if (!data.error) { // Only show if no error occurred during suggestion generation
+                const noSuggestionsLi = document.createElement('li');
+                noSuggestionsLi.textContent = "No AI suggestions were generated.";
+                suggestionsDiv.appendChild(noSuggestionsLi);
+            }
+
+             // Display Raw Suggestions if parsing failed and raw text was provided
+             if (data.rawSuggestions) {
+                 rawSuggestionsContainer.classList.remove('hidden');
+                 rawSuggestionsPre.textContent = data.rawSuggestions;
+             }
+        }
+
+
+        function connectSocket() {
+            if (socket && socket.connected) {
+                socket.disconnect();
+            }
+            socket = io(SERVER_URL, { reconnectionAttempts: 3 });
+            setupSocketListeners();
+        }
+
+        // --- Socket Event Handlers ---
+        function setupSocketListeners() {
+            socket.on('connect', () => {
+                logMessage(`Connected to server with ID: ${socket.id}`);
+                if (currentGameId && currentPlayerName) {
+                     logMessage(`Attempting to join game ${currentGameId} as ${currentPlayerName}...`);
+                     socket.emit('joinGame', { gameId: currentGameId, playerName: currentPlayerName });
+                } else {
+                    logMessage("Ready to join or create a game.");
+                }
+            });
+
+            socket.on('disconnect', (reason) => {
+                logMessage(`Disconnected from server: ${reason}`);
+                gameState.textContent = 'Disconnected';
+                startGameBtn.disabled = true;
+                questionArea.classList.add('hidden');
+                resultsArea.classList.add('hidden'); // Hide results on disconnect
+            });
+
+            socket.on('error', (message) => {
+                logMessage(`Error: ${message}`);
+                alert(`Server Error: ${message}`);
+                 if (message === 'Game not found.' || message === 'Game has already started or finished.') {
+                    currentGameId = null;
+                    currentPlayerName = null;
+                    gameArea.classList.add('hidden');
+                    joinArea.classList.remove('hidden');
+                 }
+            });
+
+             socket.on('warning', (message) => {
+                logMessage(`Warning: ${message}`);
+                answerFeedback.textContent = message;
+            });
+
+            socket.on('joinSuccess', (data) => {
+                logMessage(`Successfully joined game ${data.gameId}!`);
+                gameIdDisplay.textContent = data.gameId;
+                yourNameDisplay.textContent = currentPlayerName;
+                gameState.textContent = data.state;
+                updatePlayerList(data.players);
+                joinArea.classList.add('hidden');
+                gameArea.classList.remove('hidden');
+                resultsArea.classList.add('hidden'); // Ensure results are hidden on join
+                startGameBtn.disabled = data.state !== 'waiting';
+            });
+
+            socket.on('playerJoined', (data) => {
+                logMessage(`Player joined: ${data.playerName} (${data.playerId})`);
+                updatePlayerList(data.players);
+            });
+
+            socket.on('playerLeft', (data) => {
+                logMessage(`Player left: ${data.playerName} (${data.playerId})`);
+                updatePlayerList(data.players);
+                 // If game was finished, maybe update results display? (Optional)
+            });
+
+            socket.on('gameStarted', (data) => {
+                logMessage('Game started!');
+                gameState.textContent = data.state;
+                startGameBtn.disabled = true;
+                resultsArea.classList.add('hidden'); // Hide results when game starts
+            });
+
+            socket.on('newQuestion', (questionData) => {
+                logMessage(`Received question ${questionData.index + 1}: ${questionData.text}`);
+                displayQuestion(questionData);
+            });
+
+            socket.on('playerAnswered', (data) => {
+                logMessage(`Player ${data.playerName} answered question ${data.questionId}.`);
+                 // Update player list to show who answered
+                 const playerLi = playerList.querySelector(`li[data-socket-id="${data.playerId}"]`); // Need to add data-socket-id to li elements in updatePlayerList
+                 // For now, just re-render the list (simpler)
+                 // We need the full player list from the server ideally, or fetch it.
+                 // Let's just log for now. We get the full list on join/leave/finish.
+            });
+
+            // --- UPDATED gameFinished handler ---
+            socket.on('gameFinished', (data) => {
+                logMessage('Game finished! Displaying results.');
+                gameState.textContent = 'Finished';
+                questionArea.classList.add('hidden'); // Hide question area
+                displayResults(data); // Call function to display results/suggestions
+            });
+
+             // Listen for specific suggestion errors if the server emits them
+             socket.on('suggestionError', (message) => {
+                 logMessage(`Suggestion Error: ${message}`);
+                 errorDisplay.textContent = `Suggestion Error: ${message}`; // Show error in results area
+             });
+        }
+
+        // --- Button Event Listeners ---
+
+        createGameBtn.addEventListener('click', async () => {
+            currentPlayerName = playerNameInput.value.trim();
+            if (!currentPlayerName) {
+                alert('Please enter your name.');
+                return;
+            }
+            logMessage('Attempting to create game...');
+            try {
+                const response = await fetch(`${SERVER_URL}/game/create`, { method: 'POST' });
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                currentGameId = data.gameId;
+                gameIdInput.value = currentGameId;
+                logMessage(`Game created with ID: ${currentGameId}. Connecting...`);
+                connectSocket();
+            } catch (error) {
+                logMessage(`Error creating game: ${error}`);
+                alert(`Failed to create game: ${error.message}`);
+            }
+        });
+
+        joinGameBtn.addEventListener('click', () => {
+            currentPlayerName = playerNameInput.value.trim();
+            currentGameId = gameIdInput.value.trim();
+            if (!currentPlayerName || !currentGameId) {
+                alert('Please enter your name and a Game ID.');
+                return;
+            }
+            logMessage(`Attempting to connect and join game ${currentGameId} as ${currentPlayerName}...`);
+            connectSocket();
+        });
+
+        startGameBtn.addEventListener('click', () => {
+            if (socket && socket.connected && currentGameId) {
+                logMessage('Sending startGame event...');
+                socket.emit('startGame');
+            } else {
+                logMessage('Cannot start game: Not connected or no game ID.');
+            }
+        });
+
+        answerForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (!socket || !socket.connected || !currentQuestion) {
+                logMessage('Cannot submit answer: Not connected or no current question.');
+                return;
+            }
+            const selectedOptions = [];
+            const inputs = optionsDiv.querySelectorAll('input:checked');
+            inputs.forEach(input => selectedOptions.push(parseInt(input.value, 10)));
+
+            if (selectedOptions.length === 0) {
+                answerFeedback.textContent = 'Please select at least one option.';
+                return;
+            }
+
+            const answerData = {
+                questionId: currentQuestion.id,
+                selectedOptionIds: selectedOptions
+            };
+            logMessage(`Submitting answer for Q${currentQuestion.id}: Options [${selectedOptions.join(', ')}]`);
+            socket.emit('answerQuestion', answerData);
+            submitAnswerBtn.disabled = true;
+            answerFeedback.textContent = 'Answer submitted!';
+        });
+
+    </script>
+
+</body>
+</html>
