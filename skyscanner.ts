@@ -3,6 +3,57 @@ import { Player } from "./types";
 
 const API_KEY = "sh967490139224896692439644109194";
 
+
+
+export const getNearestAirports = async (lat: number, lng: number): Promise<string> => {
+    const response = await fetch(`https://partners.api.skyscanner.net/apiservices/v3/geo/hierarchy/flights/nearest`, {
+        method: 'POST',
+        headers: {
+            "x-api-key": API_KEY,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            locale: "en-GB",
+            locator: {
+                coordinates: {
+                    latitude: lat,
+                    longitude: lng
+                }
+            }
+        }),
+    });
+    if (!response.ok) {
+        throw new Error(`Error: ${response.status} ${response.statusText}: ${await response.text()}`);
+    }
+
+    const data = await response.json();
+    const nearestAirports = Object.entries(data.places).filter(([key, value]) => {
+        const place = value as any;
+        return place.type === "PLACE_TYPE_AIRPORT" && place.iata !== "";
+    }).map(([key, value]) => {
+        const place = value as any;
+        return {
+            entityId: place.entityId,
+            name: place.name,
+            iata: place.iata,
+            coordinates: {
+                latitude: place.coordinates.latitude,
+                longitude: place.coordinates.longitude
+            }
+        };
+    });
+
+    if (nearestAirports.length === 0) {
+        console.error(`No airports found near coordinates: ${lat}, ${lng}, returning bcn`);
+        return "95565085"
+    }
+
+    const mostNear = nearestAirports[0];
+    console.log(`Using nearest airport: ${mostNear.name} (${mostNear.iata}) at (lat,lng)=(${mostNear.coordinates.latitude},${mostNear.coordinates.longitude})`);
+    return mostNear.entityId;
+}
+
+
 interface IndicativeSearchParam {
     originIsoCode: string;
     destinationIsoCode: string;
@@ -20,6 +71,8 @@ export const filterWithConstraints = async (players: Player[], destinationsIsoCo
                 console.error(`Destination ${destinationIsoCode} not found`);
                 continue;
             }
+
+            // 
             const legs: IndicativeSearchParam[] = [
                 {
                     originIsoCode: player.originCountry,

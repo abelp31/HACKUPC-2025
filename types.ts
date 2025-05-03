@@ -22,7 +22,7 @@ export interface PlayerAnswer {
 // Represents the state of a player in the game
 export interface Player {
     name: string;
-    originCountry: string;
+    entityIdOrigin: string;
     maxBudget: number;
     answers: PlayerAnswer[]; // Array of answers submitted by the player
 }

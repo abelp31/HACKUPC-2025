@@ -9,6 +9,7 @@ import cors from 'cors';
 import path from 'path';
 import lookupRouter from './lookup';
 import { processGameResults } from './game';
+import { getNearestAirports } from './skyscanner';
 
 interface CustomSocket extends Socket {
     gameId?: string;
@@ -145,10 +146,11 @@ io.on('connection', (socket: CustomSocket) => {
     console.log(`Client connected: ${socket.id}. Waiting for join details...`);
 
     // Event Listener for Joining a Game
-    socket.on('joinGame', ({ gameId, playerName, originCountry, maxBudget }: { gameId: string, playerName: string, originCountry: string, maxBudget: number }) => {
-        console.log(`[joinGame] Attempt by ${socket.id}: GameID=${gameId}, PlayerName=${playerName}, OriginCountry=${originCountry}`);
+    socket.on('joinGame', async ({ gameId, playerName, coords, maxBudget }: { gameId: string, playerName: string, coords: { lat: number, lng: number }, maxBudget: number }) => {
+        console.log(`[joinGame] Attempt by ${socket.id}: GameID=${gameId}, PlayerName=${playerName}, Coords=${coords}, MaxBudget=${maxBudget}`);
+
         // Validation...
-        if (!gameId || !playerName || !originCountry || !maxBudget) { socket.emit('error', 'Game ID, Player Name, origin country, desired dates and maxBudget are required.'); return; }
+        if (!gameId || !playerName || !coords || !maxBudget) { socket.emit('error', 'Game ID, Player Name, coords, desired dates and maxBudget are required.'); return; }
         console.log({ gameId, games })
         const game = games.get(gameId);
         if (!game) { socket.emit('error', 'Game not found.'); return; }
@@ -156,11 +158,14 @@ io.on('connection', (socket: CustomSocket) => {
         if (socket.gameId) { socket.emit('error', 'You are already in a game.'); return; }
 
 
+        // Extract nearest airport ID from coordinates
+        const entityIdOrigin = await getNearestAirports(coords.lat, coords.lng)
+
         // Successful Join...
-        console.log(`[joinGame] Success: ${socket.id} | Player: ${playerName} | Game: ${gameId} | OriginCountry: ${originCountry}`);
+        console.log(`[joinGame] Success: ${socket.id} | Player: ${playerName} | Game: ${gameId} | entityIdOrigin: ${entityIdOrigin}`);
         socket.gameId = gameId;
         socket.playerName = playerName;
-        game.players[socket.id] = { name: playerName, originCountry, answers: [], maxBudget };
+        game.players[socket.id] = { name: playerName, entityIdOrigin, answers: [], maxBudget };
         socket.join(gameId);
         socket.emit('joinSuccess', { gameId: game.id, players: game.players, state: game.state });
         socket.to(gameId).emit('playerJoined', { playerId: socket.id, playerName: playerName, players: game.players });
