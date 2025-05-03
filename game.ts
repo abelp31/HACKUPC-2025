@@ -179,26 +179,76 @@ const fillImages = async (destinations: DestinationData[]): Promise<DestinationD
     return await Promise.all(promises);
 };
 
+/**
+ * Filters destination suggestions based on whether all players can afford the flight within their budget.
+ * Uses Promise.all to fetch flight information concurrently.
+ *
+ * @param {Game} game - The game object containing players and dates.
+ * @param {DestinationSuggestion[]} suggestions - An array of potential destination suggestions.
+ * @returns {Promise<DestinationSuggestion[]>} A promise that resolves with the filtered list of destinations.
+ */
 const filterMatchedCriterias = async (game: Game, suggestions: { cityName: string, iataCode: string }[]) => {
-    let finalDestinations = suggestions.slice();
 
-    // For all players, check if they can go to the destination within their budget. If not, remove the destination from the list.
+    // 1. Create a list of all flight checks needed (Player x Suggestion)
+    const flightChecks = [];
     for (const player of Object.values(game.players)) {
-        const playerBudget = player.maxBudget;
-        const playerOriginIata = player.originIata;
-
         for (const suggestion of suggestions) {
-            const destinationIata = suggestion.iataCode;
-            const flightInfo = await obtenerVuelos(playerOriginIata, destinationIata, game.startDate, game.endDate);
-            if (!flightInfo || flightInfo.length === 0 || flightInfo[0].precio > playerBudget) {
-                finalDestinations = finalDestinations.filter(dest => dest.iataCode !== destinationIata);
-                console.log(`Removing destination ${destinationIata} for player ${player.name} due to budget constraints.`);
-                continue;
+            flightChecks.push({
+                playerId: player.name, // Keep track for logging/debugging
+                playerOriginIata: player.originIata,
+                playerBudget: player.maxBudget,
+                destinationIata: suggestion.iataCode,
+                cityName: suggestion.cityName // Carry suggestion data along
+            });
+        }
+    }
+
+    // 2. Create an array of Promises for each flight check
+    const flightPromises = flightChecks.map(check => {
+        return obtenerVuelos(check.playerOriginIata, check.destinationIata, game.startDate, game.endDate)
+            .then((flightInfo: any) => ({
+                ...check, // Include original check data
+                flightInfo: flightInfo, // Add the result
+                isAffordable: flightInfo && flightInfo.length > 0 && flightInfo[0].precio <= check.playerBudget,
+                error: false
+            }))
+            .catch((error: any) => {
+                console.error(`Error fetching flight for ${check.playerId} (${check.playerOriginIata} to ${check.destinationIata}):`, error);
+                // Treat errors as if the flight is not available/affordable
+                return {
+                    ...check,
+                    flightInfo: null,
+                    isAffordable: false,
+                    error: true // Mark that an error occurred
+                };
+            });
+    });
+
+    // 3. Execute all promises in parallel
+    console.log(`Starting ${flightPromises.length} parallel flight checks...`);
+    const flightResults = await Promise.all(flightPromises);
+    console.log("All flight checks completed.");
+
+    // 4. Determine which destinations are invalid for *any* player
+    const invalidDestinationIatas = new Set<string>();
+    for (const result of flightResults) {
+        if (!result.isAffordable) {
+            // If a flight is not affordable (or errored/missing) for even one player,
+            // the destination is invalid for the group.
+            if (!invalidDestinationIatas.has(result.destinationIata)) {
+                console.log(`Marking destination ${result.destinationIata} as invalid due to player ${result.playerId}. Reason: ${result.error ? 'API Error' : (result.flightInfo && result.flightInfo.length > 0 ? `Unaffordable (Price: ${result.flightInfo[0].precio}, Budget: ${result.playerBudget})` : 'No flight info')}`);
+                invalidDestinationIatas.add(result.destinationIata);
             }
         }
     }
 
-    return finalDestinations
+    // 5. Filter the original suggestions list
+    const finalDestinations = suggestions.filter(suggestion =>
+        !invalidDestinationIatas.has(suggestion.iataCode)
+    );
+
+    console.log(`Initial suggestions: ${suggestions.length}, Final valid destinations: ${finalDestinations.length}`);
+    return finalDestinations;
 }
 
 interface DestinationData {
