@@ -20,7 +20,7 @@ console.log("Google AI SDK initialized.");
 export async function processGameResults(game: Game) {
     console.log(`Processing results for finished game: ${game.id}`);
     const playerCount = Object.keys(game.players).length;
-    let suggestions: any[] = []; // Default empty suggestions
+    let recommendations: DestinationData[] = []; // Default empty recommendations
     let aggregatedResults: { [questionId: number]: { questionText: string, options: { [optionId: number]: { optionText: string, count: number } } } } = {};
     let errorProcessing = null; // Store potential processing errors
 
@@ -56,8 +56,6 @@ export async function processGameResults(game: Game) {
             });
         }
 
-        console.log(`Players: ${JSON.stringify(game.players)}`);
-
         // 2. Format Aggregated Data for Prompt
         let formattedAnswers = "";
         for (const qId in aggregatedResults) {
@@ -67,12 +65,12 @@ export async function processGameResults(game: Game) {
             for (const optId in questionResult.options) {
                 const optionResult = questionResult.options[optId];
                 if (optionResult.count > 0) {
-                    formattedAnswers += `  - "${optionResult.optionText}": ${optionResult.count} vote(s)\n`;
+                    formattedAnswers += `  - "${optionResult.optionText}": ${optionResult.count} votes\n`;
                     hasVotes = true;
                 }
             }
             if (!hasVotes) {
-                formattedAnswers += "  (No votes recorded for this question's options)\n";
+                formattedAnswers += "  (No votes)\n";
             }
         }
 
@@ -122,8 +120,8 @@ For each destination, return the following:
             console.log(`-------------------------------------------------`);
             /* TODO: iataOrigen, iataDesti, preuMaxim, dataInici, dataFinal */
 
-            const data = await generateFinalData(sharedPrompt, suggestions);
-            console.log("FINAL DATA: ", data);
+            recommendations = await generateFinalData(sharedPrompt, suggestions);
+            console.log("FINAL DATA: ", recommendations);
 
         } catch (apiError) {
             console.error(`Error calling Gemini API for game ${game.id}:`, apiError);
@@ -140,7 +138,7 @@ For each destination, return the following:
     const finalPayload: any = {
         players: game.players,
         aggregatedResults: aggregatedResults,
-        suggestions: suggestions as any[], // Cast to any[] to avoid TypeScript errors
+        recommendations, // Cast to any[] to avoid TypeScript errors
     };
     if (errorProcessing) {
         finalPayload.error = errorProcessing; // Include error message if any occurred
@@ -152,7 +150,16 @@ For each destination, return the following:
     // console.log(`Game ${game.id} removed from memory.`);
 }
 
-const generateFinalData = async (sharedPrompt: string, destinations: { cityName: string, iataCode: string }[]) => {
+interface DestinationData {
+    destinationName: string,
+    goodReasons: string[],
+    badReasons: string[],
+    features: string[],
+    countryIsoCode: string,
+    bestSeason: string
+};
+
+const generateFinalData = async (sharedPrompt: string, destinations: { cityName: string, iataCode: string }[]): Promise<DestinationData[]> => {
     const result = await genAI.models.generateContent({
         model: "gemini-2.0-flash",
         contents: `
@@ -164,9 +171,11 @@ The destinations are: ${destinations.map(d => `${d.cityName} (${d.iataCode})`).j
 
 Now, for each city destination, return the following:
 - destinationName: The name of the destination (city name). Add the emoji flag of the country at the start of the name if available.
-- reasoning: A short explanation of why this destination is a good fit for the group. Make sure to include the most relevant features based on the aggregated answers.
-- features: A list of features that make this destination appealing (e.g., "beach", "mountains", "historical sites"). Include an emoji in  the start of each feature. Make sure to be distinctive and not repeat the same features for different destinations.
+- goodReasons: A short list of 5 elements about why this destination is a good fit for the group. Make sure to include the most relevant features based on the aggregated answers.
+- badReasons: A short list of 5 elements about why this destination might not be the best choice (e.g: anti lgbt laws, robbery, political situation, recent conflicts, difficult visa requirements, etc). Take into account, if needed, the answers of the different questions.
+- features: A list of features that make this destination appealing (e.g: beach, mountains, historical sites, local cuisine, shopping, etc). Include an emoji in  the start of each feature. Make sure to be distinctive and not repeat the same features for different destinations.
 - countryIsoCode: The ISO code of the country where the destination is located (e.g., "FR" for France)
+- bestSeason: The best season to visit this destination (e.g., "Summer", "Winter", "Spring", "Autumn"). This is a single word.
         `,
         config: {
             responseMimeType: "application/json",
@@ -176,14 +185,16 @@ Now, for each city destination, return the following:
                     type: Type.OBJECT,
                     properties: {
                         destinationName: { type: Type.STRING },
-                        reasoning: { type: Type.STRING },
+                        goodReasons: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        badReasons: { type: Type.ARRAY, items: { type: Type.STRING } },
                         features: { type: Type.ARRAY, items: { type: Type.STRING } },
                         countryIsoCode: { type: Type.STRING },
+                        bestSeason: { type: Type.STRING },
                     },
-                    required: ["destinationName", "reasoning", "features", "countryIsoCode"],
+                    required: ["destinationName", "goodReasons", "badReasons", "features", "countryIsoCode", "bestSeason"],
                 }
             },
         }
     });
-    return JSON.parse(result.text!) as { destinationName: string, reasoning: string, features: string[], countryIsoCode: string }[];
+    return JSON.parse(result.text!) as DestinationData[];
 }
