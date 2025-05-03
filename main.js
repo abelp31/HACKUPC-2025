@@ -11,7 +11,7 @@ let rooms = {}
 
 class Room {
     //  players = nicknames
-    // questions = [{question: "text", choices: ["text"], answers: [1,2,3,4]}]
+    // questions = [{id: "text", question: "text", choices: ["text"], answers: [1,2,3,4]}]
 
     // attributes: code, questions + answers, number of players, players
     constructor(code, questions) {
@@ -41,6 +41,21 @@ class Room {
     startGame() {
         this.started = true;
     }
+
+    saveAnswers(answers){
+        const responseMap = responses.reduce((map, response) => {
+            map[response.id] = response.answers;
+            return map;
+        }, {});
+    
+        // Llenar las respuestas en las preguntas
+        this.questions.forEach(question => {
+            if (responseMap[question.id]) {
+                question.answers.push(responseMap[question.id]);
+            }
+        });
+    this.questions = questions;
+    }
 }
 
 // Middleware para parsear el cuerpo de la solicitud como JSON
@@ -59,12 +74,49 @@ app.post('/game/create', (req, res) => {
         const randomNumbers = Array.from({ length: 3 }, () => numbers.charAt(Math.floor(Math.random() * numbers.length))).join('');
         const roomCode = randomLetters + randomNumbers;
 
-
         const room = new Room(roomCode,
             [
                 {
-                    question: "Do you like AI?",
-                    choices: ["Yes", "No", "Maybe"],
+                    id: 1,
+                    question: "What is the maximum price you would like to pay for a flight?",
+                    choices: ["150€", "300€", "500€", "1000"],
+                    answers: [],
+                },
+                {
+                    id: 2,
+                    question: "Where does your trip start from? ",
+                    choices: [],
+                    answers: [],
+                },
+                {
+                    id: 3,
+                    question: "Which continent would you like to visit?",
+                    choices: [],
+                    answers: [],
+                },
+                {
+                    id: 4,
+                    question: "From this options, what would you prefer to visit?",
+                    choices: ["Beach", "Mountain", "City"],
+                    answers: [],
+                },
+                {
+                    id: 5,
+                    question: "From this activities what do you prefer to do?",
+                    choices: ["City sightseeing", "Museum", "Try new gastronomy", "Party"],
+                    answers: [],
+                },
+                {
+                    id: 6,
+                    question: "From this activities what do you prefer to do?",
+                    choices: ["Swimming and sun bathing", "Nature sightseeing", "Party"],
+                    answers: [],
+                },
+                {
+                    id: 7,
+                    question: "From this activities what do you prefer to do?",
+                    choices: ["Hiking", "Extreme sports", "Sports", "Nature sightseeing"],
+                    answers: [],
                 }
             ]
         );
@@ -79,6 +131,7 @@ app.post('/game/create', (req, res) => {
     }
 });
 
+
 app.post("/game/:id/start", (req, res) => {
     const { id } = req.params;
 
@@ -88,6 +141,20 @@ app.post("/game/:id/start", (req, res) => {
         console.log(`Room ${id} started`);
         res.status(200).json({ message: "Game started" });
     } else {
+        res.status(404).json({ error: "Room not found" });
+    }
+});
+
+app.post("/game/:id/submit-answer", (req, res) => {
+    const { id } = req.params;
+    const room = rooms[id];
+    const { answers } = req.body;
+    if (room) {
+        if(answers){
+            room.saveAnswers(answers);
+            res.status(200).json({ message: "Answer submitted" });
+        }
+    }else{
         res.status(404).json({ error: "Room not found" });
     }
 });
