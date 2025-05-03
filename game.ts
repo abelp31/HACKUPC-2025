@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { io } from "./main";
+import { socketServer } from "./main";
 import { Game } from "./types";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
@@ -27,7 +27,7 @@ export async function processGameResults(game: Game) {
     try {
         if (playerCount === 0) {
             console.log("No players in the game, skipping result processing.");
-            io.to(game.id).emit('gameFinished', {
+            socketServer.to(game.id).emit('gameFinished', {
                 players: game.players,
                 aggregatedResults: {},
                 suggestions: [],
@@ -145,7 +145,7 @@ For each destination, return the following:
     if (errorProcessing) {
         finalPayload.error = errorProcessing; // Include error message if any occurred
     }
-    io.to(game.id).emit('gameFinished', finalPayload);
+    socketServer.to(game.id).emit('gameFinished', finalPayload);
 
     // Optional: Clean up the game from memory after processing
     // games.delete(game.id);

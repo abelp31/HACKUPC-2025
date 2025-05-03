@@ -81,7 +81,7 @@ app.use(lookupRouter)
 // --- Socket.IO Setup ---
 
 const server: http.Server = http.createServer(app);
-export const io = new SocketIOServer(server, {
+export const socketServer = new SocketIOServer(server, {
     cors: { origin: "*", methods: ["GET", "POST"] } // CORS for Socket.IO connections
 });
 
@@ -113,7 +113,7 @@ const sendQuestions = (gameId: string) => {
     const currentQuestion = game.questions[game.currentQuestionIndex];
     console.log(`Sending question ${game.currentQuestionIndex + 1} (ID: ${currentQuestion.id}) to game ${gameId}`);
 
-    io.to(gameId).emit('newQuestion', {
+    socketServer.to(gameId).emit('newQuestion', {
         index: game.currentQuestionIndex,
         id: currentQuestion.id,
         text: currentQuestion.text,
@@ -126,75 +126,75 @@ const sendQuestions = (gameId: string) => {
 
 // --- Socket.IO Connection Logic ---
 
-io.on('connection', (socket: CustomSocket) => {
-    console.log(`Client connected: ${socket.id}. Waiting for join details...`);
+socketServer.on('connection', (clientSocket: CustomSocket) => {
+    console.log(`Client connected: ${clientSocket.id}. Waiting for join details...`);
 
     // Event Listener for Joining a Game
-    socket.on('joinGame', async ({ gameId, playerName, coords, maxBudget }: { gameId: string, playerName: string, coords: { lat: number, lng: number }, maxBudget: number }) => {
-        console.log(`[joinGame] Attempt by ${socket.id}: GameID=${gameId}, PlayerName=${playerName}, Coords=${coords}, MaxBudget=${maxBudget}`);
+    clientSocket.on('joinGame', async ({ gameId, playerName, coords, maxBudget }: { gameId: string, playerName: string, coords: { lat: number, lng: number }, maxBudget: number }) => {
+        console.log(`[joinGame] Attempt by ${clientSocket.id}: GameID=${gameId}, PlayerName=${playerName}, Coords=${coords}, MaxBudget=${maxBudget}`);
 
         // Validation...
-        if (!gameId || !playerName || !coords || !maxBudget) { socket.emit('error', 'Game ID, Player Name, coords, desired dates and maxBudget are required.'); return; }
+        if (!gameId || !playerName || !coords || !maxBudget) { clientSocket.emit('error', 'Game ID, Player Name, coords, desired dates and maxBudget are required.'); return; }
         console.log({ gameId, games })
         const game = games.get(gameId);
-        if (!game) { socket.emit('error', 'Game not found.'); return; }
-        if (game.state !== 'waiting') { socket.emit('error', 'Game has already started or finished.'); return; }
-        if (socket.gameId) { socket.emit('error', 'You are already in a game.'); return; }
+        if (!game) { clientSocket.emit('error', 'Game not found.'); return; }
+        if (game.state !== 'waiting') { clientSocket.emit('error', 'Game has already started or finished.'); return; }
+        if (clientSocket.gameId) { clientSocket.emit('error', 'You are already in a game.'); return; }
 
 
         // Extract nearest airport ID from coordinates
         const entityIdOrigin = await getNearestAirportEntityId(coords.lat, coords.lng)
 
         // Successful Join...
-        console.log(`[joinGame] Success: ${socket.id} | Player: ${playerName} | Game: ${gameId} | entityIdOrigin: ${entityIdOrigin}`);
-        socket.gameId = gameId;
-        socket.playerName = playerName;
-        game.players[socket.id] = { name: playerName, entityIdOrigin, answers: [], maxBudget };
-        socket.join(gameId);
-        socket.emit('joinSuccess', { gameId: game.id, players: game.players, state: game.state });
-        socket.to(gameId).emit('playerJoined', { playerId: socket.id, playerName: playerName, players: game.players });
+        console.log(`[joinGame] Success: ${clientSocket.id} | Player: ${playerName} | Game: ${gameId} | entityIdOrigin: ${entityIdOrigin}`);
+        clientSocket.gameId = gameId;
+        clientSocket.playerName = playerName;
+        game.players[clientSocket.id] = { name: playerName, entityIdOrigin, answers: [], maxBudget };
+        clientSocket.join(gameId);
+        clientSocket.emit('joinSuccess', { gameId: game.id, players: game.players, state: game.state });
+        clientSocket.to(gameId).emit('playerJoined', { playerId: clientSocket.id, playerName: playerName, players: game.players });
     });
 
     // 'startGame' event
-    socket.on('startGame', () => {
-        const currentGameId = socket.gameId;
-        const currentPlayerName = socket.playerName;
-        if (!currentGameId || !currentPlayerName) { socket.emit('error', 'You must join a game first.'); return; }
+    clientSocket.on('startGame', () => {
+        const currentGameId = clientSocket.gameId;
+        const currentPlayerName = clientSocket.playerName;
+        if (!currentGameId || !currentPlayerName) { clientSocket.emit('error', 'You must join a game first.'); return; }
         const game = games.get(currentGameId);
-        if (!game) { socket.emit('error', 'Game not found'); return; }
-        if (game.state !== 'waiting') { socket.emit('error', 'Game has already started or finished'); return; }
+        if (!game) { clientSocket.emit('error', 'Game not found'); return; }
+        if (game.state !== 'waiting') { clientSocket.emit('error', 'Game has already started or finished'); return; }
         // TODO: Add host check authorization
 
-        console.log(`Game ${currentGameId} starting by ${currentPlayerName} (${socket.id})...`);
+        console.log(`Game ${currentGameId} starting by ${currentPlayerName} (${clientSocket.id})...`);
         game.state = 'playing';
         game.currentQuestionIndex = 0;
-        io.to(currentGameId).emit('gameStarted', { state: game.state });
+        socketServer.to(currentGameId).emit('gameStarted', { state: game.state });
         sendQuestions(currentGameId);
     });
 
     // 'answerQuestion' event
-    socket.on('answerQuestion', ({ questionId, selectedOptionIds }: { questionId: number, selectedOptionIds: number[] }) => {
-        const currentGameId = socket.gameId;
-        const currentPlayerName = socket.playerName;
+    clientSocket.on('answerQuestion', ({ questionId, selectedOptionIds }: { questionId: number, selectedOptionIds: number[] }) => {
+        const currentGameId = clientSocket.gameId;
+        const currentPlayerName = clientSocket.playerName;
         // Validation...
-        if (!currentGameId || !currentPlayerName) { socket.emit('error', 'You must join a game first.'); return; }
+        if (!currentGameId || !currentPlayerName) { clientSocket.emit('error', 'You must join a game first.'); return; }
         const game = games.get(currentGameId);
-        if (!game || game.state !== 'playing') { socket.emit('error', 'Game not found or not playing.'); return; }
-        const player = game.players[socket.id];
-        if (!player) { socket.emit('error', 'Player not found in this game.'); return; }
+        if (!game || game.state !== 'playing') { clientSocket.emit('error', 'Game not found or not playing.'); return; }
+        const player = game.players[clientSocket.id];
+        if (!player) { clientSocket.emit('error', 'Player not found in this game.'); return; }
         const currentQuestion = game.questions[game.currentQuestionIndex - 1];
-        if (!currentQuestion || currentQuestion.id !== questionId) { socket.emit('error', 'Answer submitted for incorrect question.'); return; }
-        if (!Array.isArray(selectedOptionIds) || !selectedOptionIds.every(id => typeof id === 'number')) { socket.emit('error', 'Invalid answer format (expected array of numbers).'); return; }
+        if (!currentQuestion || currentQuestion.id !== questionId) { clientSocket.emit('error', 'Answer submitted for incorrect question.'); return; }
+        if (!Array.isArray(selectedOptionIds) || !selectedOptionIds.every(id => typeof id === 'number')) { clientSocket.emit('error', 'Invalid answer format (expected array of numbers).'); return; }
         const existingAnswer = player.answers.find(ans => ans.questionId === questionId);
-        if (existingAnswer) { socket.emit('warning', 'You have already answered this question.'); return; }
+        if (existingAnswer) { clientSocket.emit('error', 'You have already answered this question.'); return; }
 
         // Store the answer...
         const playerAnswer: PlayerAnswer = { questionId: questionId, selectedOptionIds: selectedOptionIds, timestamp: Date.now() };
         player.answers.push(playerAnswer);
-        console.log(`Player ${currentPlayerName} (${socket.id}) answered question ${questionId} with options: [${selectedOptionIds.join(', ')}]`);
+        console.log(`Player ${currentPlayerName} (${clientSocket.id}) answered question ${questionId} with options: [${selectedOptionIds.join(', ')}]`);
 
         // Notify room...
-        io.to(currentGameId).emit('playerAnswered', { playerId: socket.id, playerName: currentPlayerName, questionId: questionId });
+        socketServer.to(currentGameId).emit('playerAnswered', { playerId: clientSocket.id, playerName: currentPlayerName, questionId: questionId });
 
         // Check if all answered...
         const allAnswered = Object.values(game.players).every(p => p.answers.some(ans => ans.questionId === questionId));
@@ -206,16 +206,16 @@ io.on('connection', (socket: CustomSocket) => {
     });
 
     // 'disconnect' event
-    socket.on('disconnect', () => {
-        console.log(`Client disconnected: ${socket.id}`);
-        const currentGameId = socket.gameId;
-        const currentPlayerName = socket.playerName;
+    clientSocket.on('disconnect', () => {
+        console.log(`Client disconnected: ${clientSocket.id}`);
+        const currentGameId = clientSocket.gameId;
+        const currentPlayerName = clientSocket.playerName;
         if (currentGameId && currentPlayerName) {
             const game = games.get(currentGameId);
-            if (game && game.players[socket.id]) {
-                console.log(`Player ${currentPlayerName} (${socket.id}) left game ${currentGameId}`);
-                delete game.players[socket.id];
-                io.to(currentGameId).emit('playerLeft', { playerId: socket.id, playerName: currentPlayerName, players: game.players });
+            if (game && game.players[clientSocket.id]) {
+                console.log(`Player ${currentPlayerName} (${clientSocket.id}) left game ${currentGameId}`);
+                delete game.players[clientSocket.id];
+                socketServer.to(currentGameId).emit('playerLeft', { playerId: clientSocket.id, playerName: currentPlayerName, players: game.players });
                 // Cleanup empty games...
                 if (Object.keys(game.players).length === 0 && game.state !== 'waiting') {
                     console.log(`Game ${currentGameId} is empty, removing.`); games.delete(currentGameId);
@@ -224,7 +224,7 @@ io.on('connection', (socket: CustomSocket) => {
                 }
             }
         } else {
-            console.log(`Disconnected socket ${socket.id} had not joined a game.`);
+            console.log(`Disconnected socket ${clientSocket.id} had not joined a game.`);
         }
     });
 });
