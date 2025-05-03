@@ -24,6 +24,7 @@ export interface Player {
     name: string;
     originCountry: string;
     answers: PlayerAnswer[]; // Array of answers submitted by the player
+    month: number;
 }
 
 // Represents the overall game state
