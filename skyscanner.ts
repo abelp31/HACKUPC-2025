@@ -1,6 +1,3 @@
-import { searchCountryByISO } from "./internal_data";
-import { Player } from "./types";
-
 const API_KEY = "sh967490139224896692439644109194";
 
 
