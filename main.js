@@ -28,7 +28,6 @@ app.post('/create-session', (req, res) => {
 });
 
 app.get("/test", async (req, res) => {
-    // return response.text of generateContent, use await
     const response = await generateContent();
     res.status(200).json({ text: response.text });
 });
