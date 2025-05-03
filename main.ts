@@ -7,7 +7,7 @@ import { Game, Question, PlayerAnswer, predefinedQuestions } from './types';
 import cors from 'cors';
 // Import path module for resolving file paths
 import path from 'path';
-import lookupRouter from './lookup';
+import lookupRouter from './api';
 import { processGameResults } from './game';
 import { getNearestAirportEntityId } from './skyscanner';
 
@@ -124,7 +124,6 @@ const sendQuestions = (gameId: string) => {
     game.currentQuestionIndex++;
 };
 
-// --- Socket.IO Connection Logic ---
 
 socketServer.on('connection', (clientSocket: CustomSocket) => {
     console.log(`Client connected: ${clientSocket.id}. Waiting for join details...`);

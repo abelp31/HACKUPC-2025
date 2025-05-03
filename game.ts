@@ -1,4 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
+import { getUnsplashImages, getWikipediaImage } from "./unsplash";
 import { socketServer } from "./main";
 import { Game } from "./types";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -133,12 +134,15 @@ For each destination, return the following:
         errorProcessing = "An internal error occurred while processing results.";
     }
 
+
+
+
     // 5. Emit Final Results
     console.log(`Emitting final results for game ${game.id}`);
     const finalPayload: any = {
         players: game.players,
         aggregatedResults: aggregatedResults,
-        recommendations, // Cast to any[] to avoid TypeScript errors
+        recommendations: (await fillImages(recommendations)) as any, // Cast to any[] to avoid TypeScript errors
     };
     if (errorProcessing) {
         finalPayload.error = errorProcessing; // Include error message if any occurred
@@ -150,6 +154,29 @@ For each destination, return the following:
     // console.log(`Game ${game.id} removed from memory.`);
 }
 
+const fillImages = async (destinations: DestinationData[]): Promise<DestinationData[]> => {
+    // 1. Create an array of promises
+    const promises = destinations.map(async (destination) => {
+        // If the image URL already exists, return the destination object as is.
+        if (destination.imageUrl) {
+            // No async operation needed, return the original object directly.
+            // Promise.resolve() is implicitly handled by async function return.
+            return destination;
+        } else {
+            // If the image URL is missing, fetch it.
+            try {
+                const imageUrl = await getWikipediaImage(destination.destinationName);
+                return { ...destination, imageUrl: imageUrl };
+            } catch (error) {
+                console.error(`Failed to fetch image for ${destination.destinationName}:`, error);
+                return { ...destination, imageUrl: "https://http.cat/images/202.jpg" };
+            }
+        }
+    });
+
+    return await Promise.all(promises);
+};
+
 interface DestinationData {
     destinationName: string,
     goodReasons: string[],
@@ -157,6 +184,7 @@ interface DestinationData {
     features: string[],
     countryIsoCode: string,
     bestSeason: string
+    imageUrl: string | undefined
 };
 
 const generateFinalData = async (sharedPrompt: string, destinations: { cityName: string, iataCode: string }[]): Promise<DestinationData[]> => {
