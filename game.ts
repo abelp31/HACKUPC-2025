@@ -216,6 +216,19 @@ For each destination, return the following JSON format:
     let detailedDestinations = await generateFinalData(sharedPrompt, finalDestinations);
     console.log("Detailed Destination Data Received:", detailedDestinations);
 
+    // remove duplicates based on cityNameWithoutEmoji
+    const uniqueDestinations = new Map<string, DestinationData>();
+    detailedDestinations.forEach(dest => {
+        if (!uniqueDestinations.has(dest.destinationNameNoEmoji)) {
+            uniqueDestinations.set(dest.
+                destinationNameNoEmoji, dest);
+        } else {
+            console.warn(`Duplicate destination found: ${dest.destinationNameNoEmoji}. Keeping the first one.`);
+        }
+    }
+    );
+    detailedDestinations = Array.from(uniqueDestinations.values());
+
     // Add images (No try/catch)
     detailedDestinations = await fillImages(detailedDestinations);
     console.log("Destination Data with Images:", detailedDestinations);
