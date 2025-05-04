@@ -34,9 +34,21 @@ export interface Game {
     currentQuestionIndex: number; // Index of the question currently being asked
     startDate: string;
     endDate: string,
-    state: 'waiting' | 'playing' | 'finished'; // Current phase of the game
+    state: 'waiting' | 'playing' | 'resultsFinished' | 'finished'; // Current phase of the game
     players: {
         [socketId: string]: Player; // Map socket IDs to player data
+    };
+    finalVotes: {
+        [cityName: string]: {
+            votesPositive: number;
+            votesNegative: number;
+        },
+    };
+    socketIdVoted: {
+        [socketId: string]: {
+            votesPositive: number;
+            votesNegative: number;
+        };
     };
 }
 

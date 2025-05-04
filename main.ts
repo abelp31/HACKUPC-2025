@@ -58,7 +58,9 @@ app.post("/game/create", (req: Request, res: Response) => {
         state: 'waiting',
         players: {},
         startDate: req.body.startDate,
-        endDate: req.body.endDate
+        endDate: req.body.endDate,
+        finalVotes: {},
+        socketIdVoted: {}
     };
     games.set(gameId, newGame);
     console.log(`Game created with ID: ${gameId}`);
@@ -103,10 +105,10 @@ const sendQuestions = (gameId: string) => {
     }
 
     if (game.currentQuestionIndex >= game.questions.length) {
-        game.state = 'finished';
+        game.state = 'resultsFinished';
         console.log(`Game ${gameId} state set to finished.`);
         socketServer.to(gameId).emit('questionsFinished', {});
-        processGameResults(game); // Errors handled internally, emits 'gameFinished'
+        processGameResults(game); // Errors handled internally, emits 'resultsFinished'
         return; // Stop sending questions
     }
 
@@ -155,6 +157,53 @@ socketServer.on('connection', (clientSocket: CustomSocket) => {
         clientSocket.to(gameId).emit('playerJoined', { playerId: clientSocket.id, playerName: playerName, players: game.players });
     });
 
+    clientSocket.on('voteResult', ({ cityName, rating }: { cityName: string, rating: number }) => {
+        const currentGameId = clientSocket.gameId;
+        const currentPlayerName = clientSocket.playerName;
+        if (!currentGameId || !currentPlayerName) { clientSocket.emit('error', 'You must join a game first.'); return; }
+        const game = games.get(currentGameId);
+        if (!game) { clientSocket.emit('error', 'Game not found'); return; }
+        if (game.state !== 'resultsFinished') { clientSocket.emit('error', 'Game is not in results phase'); return; }
+        const player = game.players[clientSocket.id];
+        if (!player) { clientSocket.emit('error', 'Player not found in this game.'); return; }
+        if (!game.finalVotes[cityName]) {
+            game.finalVotes[cityName] = { votesPositive: 0, votesNegative: 0 };
+        }
+        if (!game.socketIdVoted[clientSocket.id]) {
+            game.socketIdVoted[clientSocket.id] = { votesPositive: 0, votesNegative: 0 };
+        }
+
+        // if voted positive 2 times or more, return error
+        if (rating == 1 && game.socketIdVoted[clientSocket.id]?.votesPositive >= 2) {
+            clientSocket.emit('error', 'You have already voted positive for this city twice.');
+            return;
+        }
+        // if voted negative 1 time or more, return error
+        if (rating == -1 && game.socketIdVoted[clientSocket.id]?.votesNegative >= 1) {
+            clientSocket.emit('error', 'You have already voted negative for this city once.');
+            return;
+        }
+
+        if (rating > 0) {
+            game.finalVotes[cityName].votesPositive++;
+            game.socketIdVoted[clientSocket.id].votesPositive++;
+        } else {
+            game.finalVotes[cityName].votesNegative++;
+            game.socketIdVoted[clientSocket.id].votesNegative++;
+        }
+        console.log(`Player ${currentPlayerName} (${clientSocket.id}) voted ${rating > 0 ? 'positive' : 'negative'} for city ${cityName}`);
+        socketServer.to(currentGameId).emit('playerVoted', { playerId: clientSocket.id, playerName: currentPlayerName, cityName: cityName, rating: rating });
+        // Check if all players have voted
+        const allVoted = Object.keys(game.players).every(socketId => {
+            return game.socketIdVoted[socketId].votesPositive == 2 && game.socketIdVoted[socketId].votesNegative == 1;
+        });
+        if (allVoted) {
+            console.log(`All players in game ${currentGameId} have voted for city ${cityName}. Finalizing results...`);
+            game.state = 'finished';
+            socketServer.to(currentGameId).emit('gameFinished', { finalVotes: game.finalVotes });
+        }
+    });
+
     // 'startGame' event
     clientSocket.on('startGame', () => {
         const currentGameId = clientSocket.gameId;
@@ -163,7 +212,6 @@ socketServer.on('connection', (clientSocket: CustomSocket) => {
         const game = games.get(currentGameId);
         if (!game) { clientSocket.emit('error', 'Game not found'); return; }
         if (game.state !== 'waiting') { clientSocket.emit('error', 'Game has already started or finished'); return; }
-        // TODO: Add host check authorization
 
         console.log(`Game ${currentGameId} starting by ${currentPlayerName} (${clientSocket.id})...`);
         game.state = 'playing';

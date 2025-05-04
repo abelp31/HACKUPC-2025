@@ -184,7 +184,7 @@ For each destination, return the following JSON format:
     if (initialSuggestions.length === 0) {
         console.log(`Gemini returned no initial suggestions for game ${game.id}. Halting processing.`);
         // Emit a simple message to the whole game room and stop
-        socketServer.to(game.id).emit('gameFinished', {
+        socketServer.to(game.id).emit('resultsFinished', {
             players: game.players,
             aggregatedResults: aggregatedResults,
             recommendations: [],
@@ -201,7 +201,7 @@ For each destination, return the following JSON format:
     if (finalDestinations.length === 0) {
         console.log(`No destinations were affordable for all players in game ${game.id}. Halting processing.`);
         // Emit message to the whole game room and stop
-        socketServer.to(game.id).emit('gameFinished', {
+        socketServer.to(game.id).emit('resultsFinished', {
             players: game.players,
             aggregatedResults: aggregatedResults,
             recommendations: [],
@@ -310,12 +310,12 @@ For each destination, return the following JSON format:
         };
 
         console.log(`Emitting final results to player ${player.name} (Socket ID: ${socketId})`);
-        socketServer.to(socketId).emit('gameFinished', playerFinalPayload); // Emit personalized payload to individual socket
+        socketServer.to(socketId).emit('resultsFinished', playerFinalPayload); // Emit personalized payload to individual socket
     }
 
     // Optional: Clean up the game from memory after processing
     // delete games[game.id]; // Or use games.delete(game.id) if it's a Map
-    console.log(`Game ${game.id} processing complete. Consider removing from memory.`);
+    console.log(`Game ${game.id} results finished. Waiting for player votes to move to finished.`);
 }
 
 
@@ -399,7 +399,7 @@ const filterMatchedCriterias = async (
 
         const promise = (async (): Promise<FlightCheckResult> => {
             // No try/catch around obtenerVuelos. If it throws, this promise rejects.
-            // console.log(`Calling obtenerVuelos for ${check.socketId} to ${check.destinationIata}`, { playerOriginIata: check.playerOriginIata, destinationIata: check.destinationIata, startDate: game.startDate, endDate: game.endDate });
+            console.log(`Calling obtenerVuelos for ${check.socketId} to ${check.destinationIata}`, { playerOriginIata: check.playerOriginIata, destinationIata: check.destinationIata, startDate: game.startDate, endDate: game.endDate });
             const flightInfo: {
                 vueloInfo_barato: {
                     precio: number;

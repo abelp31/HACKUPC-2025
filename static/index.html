@@ -332,7 +332,7 @@
             });
 
             // --- UPDATED gameFinished handler ---
-            socket.on('gameFinished', (data) => {
+            socket.on('resultsFinished', (data) => {
                 logMessage('Game finished! Displaying results.');
                 gameState.textContent = 'Finished';
                 questionArea.classList.add('hidden'); // Hide question area
