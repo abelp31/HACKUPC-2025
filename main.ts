@@ -194,8 +194,8 @@ socketServer.on('connection', (clientSocket: CustomSocket) => {
         console.log(`Player ${currentPlayerName} (${clientSocket.id}) voted ${rating > 0 ? 'positive' : 'negative'} for city ${cityName}`);
         socketServer.to(currentGameId).emit('playerVoted', game.finalVotes);
         // Check if all players have voted
-        const allVoted = Object.keys(game.players).every(socketId => {
-            return game.socketIdVoted[socketId].votesPositive == 2 && game.socketIdVoted[socketId].votesNegative == 1;
+        const allVoted = [...Object.keys(game.players)].every(socketId => {
+            return game.socketIdVoted[socketId]?.votesPositive == 2 && game.socketIdVoted[socketId]?.votesNegative == 1;
         });
         if (allVoted) {
             console.log(`All players in game ${currentGameId} have voted for city ${cityName}. Finalizing results...`);
