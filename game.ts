@@ -216,32 +216,22 @@ For each destination, return the following JSON format:
     let detailedDestinations = await generateFinalData(sharedPrompt, finalDestinations);
     console.log("Detailed Destination Data Received:", detailedDestinations);
 
-    // remove duplicates based on cityNameWithoutEmoji
-    const uniqueDestinations = new Map<string, DestinationData>();
-    detailedDestinations.forEach(dest => {
-        if (!uniqueDestinations.has(dest.destinationNameNoEmoji)) {
-            uniqueDestinations.set(dest.
-                destinationNameNoEmoji, dest);
-        } else {
-            console.warn(`Duplicate destination found: ${dest.destinationNameNoEmoji}. Keeping the first one.`);
-        }
-    }
-    );
-    detailedDestinations = Array.from(uniqueDestinations.values());
+    console.log({ 1: detailedDestinations })
 
     // Add images (No try/catch)
     detailedDestinations = await fillImages(detailedDestinations);
+    console.log({ 2: detailedDestinations })
     console.log("Destination Data with Images:", detailedDestinations);
 
 
     // 7. Prepare and Emit Personalized Results to Each Player
     console.log(`Preparing and emitting personalized results for game ${game.id}`);
 
-    // Create a map of detailed destinations by IATA code for quick lookup
+    // Create a map of detailed destinations by dest.destinationNameNoEmoji for quick lookup
     const detailedDestinationsMap = new Map<string, DestinationData>();
     detailedDestinations.forEach(dest => {
-        if (dest.iataCode) {
-            detailedDestinationsMap.set(dest.iataCode, dest);
+        if (dest.iataCode && dest.destinationNameNoEmoji) {
+            detailedDestinationsMap.set(dest.destinationNameNoEmoji, dest);
         } else {
             console.warn(`Destination ${dest.destinationNameNoEmoji} is missing IATA code in detailed data. Skipping map entry.`);
         }
@@ -265,7 +255,7 @@ For each destination, return the following JSON format:
         const personalizedRecommendations: PersonalizedDestinationData[] = [];
 
         finalDestinations.forEach(validDest => {
-            const baseDetails = detailedDestinationsMap.get(validDest.iataCode);
+            const baseDetails = detailedDestinationsMap.get(validDest.cityName);
             if (!baseDetails) {
                 console.warn(`Could not find detailed data for valid destination ${validDest.cityName} (${validDest.iataCode}). Skipping for player ${socketId}.`);
                 return;
