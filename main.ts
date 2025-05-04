@@ -105,6 +105,7 @@ const sendQuestions = (gameId: string) => {
     if (game.currentQuestionIndex >= game.questions.length) {
         game.state = 'finished';
         console.log(`Game ${gameId} state set to finished.`);
+        socketServer.to(gameId).emit('questionsFinished', {});
         processGameResults(game); // Errors handled internally, emits 'gameFinished'
         return; // Stop sending questions
     }

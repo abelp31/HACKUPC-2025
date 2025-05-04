@@ -151,7 +151,7 @@ For each destination, return the following JSON format:
 - iataCode: The IATA code of the most important airport near the city (e.g., "BCN")
 `;
     const initialResult = await genAI.models.generateContent({
-        model: "gemini-1.5-flash", // Or your preferred model
+        model: "gemini-2.0-flash", // Or your preferred model
         contents: firstPrompt,
         config: {
             responseMimeType: "application/json",
@@ -505,7 +505,7 @@ Now, for each of these valid city destinations, provide detailed information in 
 `;
 
     const result = await genAI.models.generateContent({
-        model: "gemini-1.5-flash", // Or your preferred model
+        model: "gemini-2.0-flash", // Or your preferred model
         contents: finalPrompt,
         config: {
             responseMimeType: "application/json",
